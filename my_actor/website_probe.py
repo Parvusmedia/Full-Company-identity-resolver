@@ -21,6 +21,7 @@ from .normalization import (
     extract_registrable_domain,
     normalize_text,
     text_mentions_company,
+    website_path_looks_about,
 )
 
 
@@ -251,6 +252,17 @@ async def validate_website_candidates(
         new_score = cand.score + probe.score_delta
         prior_probe = cand.homepage_probe if isinstance(cand.homepage_probe, dict) else {}
         ai_backed = bool(prior_probe.get("ai_overview_backed"))
+        about_backed = any(
+            text_mentions_company(ev.snippet or "", legal_name)
+            and (
+                website_path_looks_about(ev.url)
+                or any(
+                    t in (ev.title or "").casefold()
+                    for t in ("quiénes somos", "quienes somos", "about us", "sobre nosotros")
+                )
+            )
+            for ev in cand.google_evidences
+        )
         probe_dump = {
             **prior_probe,
             "ok": probe.ok,
@@ -269,20 +281,22 @@ async def validate_website_candidates(
         )
         # AI Overview already corroborated the company↔URL link; do not discard
         # solely because the homepage lacks brand tokens (e.g. WTW Spain portal).
-        if probe.reject and not ai_backed:
+        # Same for Google about-pages whose SERP snippet self-identifies the firm.
+        if probe.reject and not ai_backed and not about_backed:
             Actor.log.info(
                 "Rejecting website %s after homepage probe (%s)",
                 cand.url,
                 "; ".join(reasons[:4]),
             )
             continue
-        if probe.reject and ai_backed:
+        if probe.reject and (ai_backed or about_backed):
             Actor.log.info(
-                "Keeping AI Overview-backed website %s despite probe reject (%s)",
+                "Keeping %s-backed website %s despite probe reject (%s)",
+                "AI Overview" if ai_backed else "about-page",
                 cand.url,
                 "; ".join(reasons[:4]),
             )
-            probe_dump["reject_overridden_by_ai_overview"] = True
+            probe_dump["reject_overridden_by_ai_overview" if ai_backed else "reject_overridden_by_about_page"] = True
         kept.append(updated)
 
     # Append non-probed tail unchanged (lower ranked)

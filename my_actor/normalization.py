@@ -350,9 +350,8 @@ _WEAK_PATH_MARKERS = (
     "/cookies",
     "/contacto",
     "/contact",
-    "/quienes-somos",
-    "/nosotros",
-    "/about",
+    # Note: /quienes-somos, /nosotros, /about are intentional about-pages —
+    # they are strong official-site signals, not rejectable editorial paths.
     "/blog/",
     "/noticias/",
     "/news/",
@@ -361,6 +360,16 @@ _WEAK_PATH_MARKERS = (
     "/diario_borme",
     "/borme",
     "/pdfs/",
+)
+
+_ABOUT_PATH_MARKERS = (
+    "/quienes-somos",
+    "/quien-somos",
+    "/nosotros",
+    "/about",
+    "/about-us",
+    "/sobre-nosotros",
+    "/empresa",
 )
 
 
@@ -701,6 +710,15 @@ def website_path_looks_editorial(url: str | None) -> bool:
     if path.endswith(".pdf"):
         return True
     return any(marker in path for marker in _WEAK_PATH_MARKERS)
+
+
+def website_path_looks_about(url: str | None) -> bool:
+    """True for about/quienes-somos style paths (official self-description pages)."""
+    if not url:
+        return False
+    parsed = urlparse(url if "://" in url else f"https://{url}")
+    path = (parsed.path or "").lower()
+    return any(marker in path for marker in _ABOUT_PATH_MARKERS)
 
 
 def select_official_website(

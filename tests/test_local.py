@@ -493,8 +493,9 @@ def test_ai_overview_website_fallback() -> None:
         url="https://servicios-seguros.wtwco.com/Admin/Public/p/quienes-somos",
         domain="wtwco.com",
     )
-    # Organic scoring alone rejects dissimilar brand domain without title hit.
-    assert build_website_candidates([organic], legal) == []
+    # About-page + legal-name snippet now scores without AI Overview.
+    organic_scored = build_website_candidates([organic], legal)
+    assert organic_scored and organic_scored[0].url == "https://servicios-seguros.wtwco.com/"
 
     ai = AiOverviewEvidence(
         query=query,
@@ -558,6 +559,41 @@ def test_ai_overview_website_fallback() -> None:
     print("OK AI Overview website fallback for Willis Iberia")
 
 
+def test_willis_quienes_somos_about_page_scoring() -> None:
+    from my_actor.scoring import build_website_candidates
+
+    legal = "Willis Iberia Correduria De Seguros Y Reaseguros, S.A."
+    evidences = [
+        GoogleEvidence(
+            query="Willis Iberia Correduria De Seguros Y Reaseguros Madrid",
+            query_type="website",
+            position=1,
+            title="Quienes Somos - Seguros - WTW",
+            snippet=(
+                "Denominaciones sociales: WILLIS IBERIA, CORREDURÍA DE SEGUROS Y "
+                "REASEGUROS, S.A. y PyM BROKER CORREDURIA DE SEGUROS, S.A."
+            ),
+            url="https://servicios-seguros.wtwco.com/Admin/Public/p/quienes-somos",
+            domain="wtwco.com",
+        ),
+        GoogleEvidence(
+            query="Willis Iberia Correduria De Seguros Y Reaseguros Madrid",
+            query_type="website",
+            position=2,
+            title="Aviso legal",
+            snippet="WILLIS IBERIA, CORREDURIA DE SEGUROS Y REASEGUROS, S.A.; Domicilio social",
+            url="https://willplatine.es/aviso-legal/",
+            domain="willplatine.es",
+        ),
+    ]
+    cands = build_website_candidates(evidences, legal)
+    assert cands, "expected WTW about-page to survive scoring"
+    assert "wtwco.com" in (cands[0].domain or "")
+    assert cands[0].url == "https://servicios-seguros.wtwco.com/"
+    assert all("willplatine" not in (c.domain or "") for c in cands)
+    print("OK Willis quienes-somos about-page scoring")
+
+
 def main() -> None:
     test_json_files()
     test_parse_queries()
@@ -573,6 +609,7 @@ def main() -> None:
     test_parent_page_penalty_and_no_post_derivation()
     test_homepage_probe_rejects_global_brand_for_iberica()
     test_ai_overview_website_fallback()
+    test_willis_quienes_somos_about_page_scoring()
     print("\nAll local checks passed.")
 
 

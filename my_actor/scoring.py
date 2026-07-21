@@ -22,6 +22,7 @@ from .normalization import (
     text_mentions_company,
     title_looks_like_registry,
     token_coverage,
+    website_path_looks_about,
     website_path_looks_editorial,
     _ENTITY_QUALIFIER_TOKENS,
     _normalize_qualifier_set,
@@ -479,6 +480,7 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
         best_title_sim = 0.0
         title_backed = False
         snippet_only_backed = False
+        about_backed = False
         editorial_only = True
         directory_listing = False
         for ev, original_url in zip(cand.google_evidences, originals.get(cand.domain, [])):
@@ -495,29 +497,41 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
                 title_backed = True
             elif snippet_hit:
                 snippet_only_backed = True
+            title_n = normalize_text(ev.title or "")
+            about_title = any(
+                t in title_n for t in ("quienes somos", "sobre nosotros", "about us", "about")
+            )
+            if snippet_hit and not directory_listing and (
+                website_path_looks_about(original_url) or about_title
+            ):
+                about_backed = True
             if not website_path_looks_editorial(original_url):
                 editorial_only = False
 
         # Reject pure editorial/deep-link hits unless the domain itself looks owned.
-        if editorial_only and domain_sim < 50:
+        if editorial_only and domain_sim < 50 and not about_backed:
             continue
 
         # Association/directory pages that list the company are not official sites.
         if directory_listing and domain_sim < 70:
             continue
 
-        # Content-backed brand domains require a title mention (not snippet-only),
-        # to avoid competitor/news pages that merely name the firm in the blurb.
-        content_backed = title_backed and best_title_sim >= 55 and not directory_listing
+        # Content-backed brand domains: title mention, OR about-page whose snippet
+        # self-identifies the legal name (Willis Iberia → WTW quienes-somos).
+        content_backed = (
+            (title_backed and best_title_sim >= 55 and not directory_listing) or about_backed
+        )
         if domain_sim < 50 and not content_backed:
             continue
-        # Snippet-only mentions never rescue a dissimilar domain.
-        if domain_sim < 50 and snippet_only_backed and not title_backed:
+        # Snippet-only mentions never rescue a dissimilar domain (unless about_backed).
+        if domain_sim < 50 and snippet_only_backed and not title_backed and not about_backed:
             continue
 
         score = domain_sim * 0.55
         if content_backed and domain_sim < 50:
             score += best_title_sim * 0.45
+            if about_backed:
+                score += 20.0
         for ev in cand.google_evidences:
             bonus, _ = position_bonus(ev.position)
             score += bonus * 0.5

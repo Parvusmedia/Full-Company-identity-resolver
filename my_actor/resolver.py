@@ -192,7 +192,23 @@ def _top_website_is_content_backed(website_candidates: list[Any], legal_name: st
     if not website_candidates:
         return False
     top = website_candidates[0]
-    return any(text_mentions_company(ev.title or "", legal_name) for ev in top.google_evidences)
+    probe = top.homepage_probe if isinstance(getattr(top, "homepage_probe", None), dict) else {}
+    # AI Overview corroboration is strong enough to keep a dissimilar brand domain
+    # (e.g. Willis Iberia → servicios-seguros.wtwco.com).
+    if probe.get("ai_overview_backed"):
+        return True
+    from .normalization import website_path_looks_about
+
+    for ev in top.google_evidences:
+        if text_mentions_company(ev.title or "", legal_name):
+            return True
+        title_n = (ev.title or "").casefold()
+        about_title = any(t in title_n for t in ("quiénes somos", "quienes somos", "about us", "sobre nosotros"))
+        if text_mentions_company(ev.snippet or "", legal_name) and (
+            website_path_looks_about(ev.url) or about_title
+        ):
+            return True
+    return False
 
 
 def _result_from_selection(
