@@ -1,0 +1,39 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Apify local storage
+storage/
+apify_storage/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+*.pem
+
+# Build / dist
+dist/
+build/
+*.egg-info/
+
+# Test / coverage
+.coverage
+htmlcov/
+.tox/

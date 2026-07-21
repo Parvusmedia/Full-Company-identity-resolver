@@ -1,0 +1,11 @@
+{
+  "actorSpecification": 1,
+  "name": "full-company-identity-resolver",
+  "title": "Full Company Identity Resolver",
+  "description": "Resolves Spanish company legal names into a single consolidated identity row with LinkedIn, website, domain and evidence.",
+  "version": "0.1",
+  "build": {
+    "dockerfile": "../Dockerfile"
+  },
+  "input": "./input_schema.json"
+}
