@@ -280,6 +280,8 @@ WEBSITE_NOISE_DOMAINS = {
     "corredurias.org",
     "opendi.es",
     "conductordeprimera.com",
+    "apiempresas.es",
+    "apiempresas.com",
     "einforma.com",
     "guiaempresas.wolterskluwer.es",
     "wolterskluwer.es",
@@ -478,8 +480,11 @@ _REGISTRY_TITLE_MARKERS = (
     "borme",
     "boe.es",
     "razon social",
+    "cif ",
     "cif:",
+    "nif ",
     "nif:",
+    "apiempresas",
 )
 
 
