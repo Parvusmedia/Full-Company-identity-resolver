@@ -1,9 +1,13 @@
-# Full Company Identity Resolver
+# Company Identity Resolver
 
-Apify Actor in Python that receives Spanish company legal names (`razones sociales`)
-and returns **exactly one consolidated row per company**, resolving LinkedIn company
-page, official website, domain, industry, employees, followers, headquarters,
-relationship and confidence with explainable evidence.
+Apify Actor that turns a **company name, legal name (razón social), or brand** into
+**exactly one enrichment row**: LinkedIn company URL, official website, domain,
+firmographics, confidence and evidence.
+
+Built for **prospecting, CRM enrichment and LinkedIn / paid-media** workflows — not a
+raw LinkedIn scraper.
+
+> Store listing pack (pricing, screenshots, payout FAQ): [`store/STORE_LISTING.md`](store/STORE_LISTING.md)
 
 ## Pipeline
 
@@ -167,3 +171,17 @@ discovered by Google. Response `element` fields are mapped into the output row.
 - No dataset schema is published yet, to keep the Actor definition minimal and valid.
 - A Harvest failure does not discard Google evidence (`enrichment_status=harvest_failed_google_kept`).
 - Companies without LinkedIn return `match_status=not_found` or `partial` and do not abort the batch.
+
+## Pricing (Apify Store)
+
+Recommended model: **Pay per event** — **$0.10 per company row** (dataset item),
+≈ **$100 / 1,000 companies**, with **platform usage passed to the user**.
+
+You pay Apify; Apify pays the developer (~80% of PPE revenue − any absorbed usage).
+See [`store/STORE_LISTING.md`](store/STORE_LISTING.md) for the full monetization guide.
+
+## Example input / output
+
+- Input: [`store/example_input.json`](store/example_input.json)
+- Output sample: [`store/example_output.json`](store/example_output.json)
+- Screenshot mockups: open [`store/screenshot_mockup.html`](store/screenshot_mockup.html)

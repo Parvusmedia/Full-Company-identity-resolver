@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Company Identity Resolver — Store screenshot mockups</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --line: #2d3a4d;
+      --text: #e8eef7;
+      --muted: #8b9bb4;
+      --accent: #3d8bfd;
+      --ok: #3ecf8e;
+      --warn: #f0b429;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #0a0e14;
+      color: var(--text);
+      padding: 32px;
+    }
+    h1 { font-size: 18px; color: var(--muted); font-weight: 500; margin: 0 0 24px; }
+    .screen {
+      width: 1280px;
+      height: 720px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      margin: 0 0 48px;
+      overflow: hidden;
+      position: relative;
+      page-break-after: always;
+    }
+    .topbar {
+      height: 48px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 12px;
+      background: #121820;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #445; }
+    .dot.r { background: #ff5f57; }
+    .dot.y { background: #febc2e; }
+    .dot.g { background: #28c840; }
+    .brand { font-weight: 700; letter-spacing: -0.02em; }
+    .brand span { color: var(--accent); }
+    .pill {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--ok);
+      border: 1px solid #2a5;
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+    .hero {
+      padding: 64px 72px;
+      height: calc(100% - 48px);
+      background:
+        radial-gradient(ellipse 80% 60% at 80% 20%, rgba(61,139,253,0.18), transparent),
+        var(--bg);
+    }
+    .eyebrow { color: var(--accent); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+    .hero h2 { font-size: 42px; line-height: 1.15; margin: 12px 0 16px; letter-spacing: -0.03em; max-width: 900px; }
+    .hero p { color: var(--muted); font-size: 18px; max-width: 720px; line-height: 1.5; }
+    .flow {
+      display: flex;
+      gap: 12px;
+      margin-top: 40px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .chip {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 14px 18px;
+      border-radius: 10px;
+      font-size: 14px;
+    }
+    .arrow { color: var(--accent); font-size: 22px; }
+    .grid {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      height: calc(100% - 48px);
+    }
+    .side {
+      border-right: 1px solid var(--line);
+      padding: 20px;
+      background: #121820;
+    }
+    .side h3 { margin: 0 0 12px; font-size: 14px; color: var(--muted); }
+    pre {
+      margin: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 12px;
+      line-height: 1.45;
+      overflow: hidden;
+      height: 580px;
+      color: #c5d4ea;
+    }
+    .main { padding: 20px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+    .status { color: var(--ok); font-weight: 600; }
+    .status.partial { color: var(--warn); }
+    .caption {
+      position: absolute;
+      bottom: 14px;
+      right: 18px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <h1>Open this file → zoom to 100% → screenshot each .screen (1280×720)</h1>
+
+  <!-- SCREEN 1: Hero -->
+  <section class="screen" id="s1">
+    <div class="topbar">
+      <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+      <div class="brand">Company Identity <span>Resolver</span></div>
+      <div class="pill">Apify Store · PPE</div>
+    </div>
+    <div class="hero">
+      <div class="eyebrow">B2B enrichment · not a raw scraper</div>
+      <h2>From legal name to LinkedIn, website &amp; domain — one row per company</h2>
+      <p>
+        Resolves company name, legal name (razón social) or brand into a consolidated identity record
+        with confidence and evidence. Built for prospecting, CRM enrichment and LinkedIn Ads.
+      </p>
+      <div class="flow">
+        <div class="chip">Willis Iberia Correduría…, S.A.</div>
+        <div class="arrow">→</div>
+        <div class="chip">linkedin.com/company/…</div>
+        <div class="chip">servicios-seguros.wtwco.com</div>
+        <div class="chip">match_status · confidence</div>
+      </div>
+    </div>
+    <div class="caption">Screenshot 1 — Value proposition</div>
+  </section>
+
+  <!-- SCREEN 2: Input -->
+  <section class="screen" id="s2">
+    <div class="topbar">
+      <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+      <div class="brand">Input · companies[]</div>
+    </div>
+    <div class="grid">
+      <div class="side">
+        <h3>Actor input</h3>
+        <p style="color:var(--muted);font-size:13px;line-height:1.4">
+          Pass legal names (and optional city). One dataset item is produced per company.
+        </p>
+      </div>
+      <div class="main">
+<pre>{
+  "companies": [
+    {
+      "legal_name": "Willis Iberia Correduria De Seguros Y Reaseguros, S.A.",
+      "city": "Madrid"
+    },
+    {
+      "legal_name": "Albrok Mediacion S.A.",
+      "city": "Madrid"
+    },
+    {
+      "legal_name": "Telefonica S.A.",
+      "city": "Madrid"
+    }
+  ],
+  "country_code": "es",
+  "validate_websites": true,
+  "max_website_probes": 1,
+  "fallback_google_maps": false
+}</pre>
+      </div>
+    </div>
+    <div class="caption">Screenshot 2 — Example input</div>
+  </section>
+
+  <!-- SCREEN 3: Output -->
+  <section class="screen" id="s3">
+    <div class="topbar">
+      <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+      <div class="brand">Dataset · 3 items</div>
+      <div class="pill">Succeeded</div>
+    </div>
+    <div class="main" style="padding-top:28px">
+      <table>
+        <thead>
+          <tr>
+            <th>legal_name</th>
+            <th>linkedin_url</th>
+            <th>website</th>
+            <th>domain</th>
+            <th>status</th>
+            <th>confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Willis Iberia Correduria…</td>
+            <td style="color:var(--muted)">—</td>
+            <td>servicios-seguros.wtwco.com</td>
+            <td>wtwco.com</td>
+            <td class="status partial">partial</td>
+            <td>0</td>
+          </tr>
+          <tr>
+            <td>Albrok Mediacion S.A.</td>
+            <td>/company/albrok-mediacion</td>
+            <td>albroksa.com</td>
+            <td>albroksa.com</td>
+            <td class="status">confirmed</td>
+            <td>92</td>
+          </tr>
+          <tr>
+            <td>Telefonica S.A.</td>
+            <td>/company/telefonica</td>
+            <td>telefonica.es</td>
+            <td>telefonica.es</td>
+            <td class="status">confirmed</td>
+            <td>95</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="margin-top:28px;color:var(--muted);font-size:14px;max-width:900px">
+        Directories and gazettes are rejected. Group brands (e.g. WTW for Willis Iberia) can be kept when
+        SERP/AI evidence links the legal entity to the official portal.
+      </p>
+    </div>
+    <div class="caption">Screenshot 3 — Example output</div>
+  </section>
+</body>
+</html>

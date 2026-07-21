@@ -1,11 +1,17 @@
 {
   "actorSpecification": 1,
-  "name": "full-company-identity-resolver",
-  "title": "Full Company Identity Resolver",
-  "description": "Resolves Spanish company legal names into a single consolidated identity row with LinkedIn, website, domain and evidence.",
+  "name": "company-identity-resolver",
+  "title": "Company Identity Resolver — Legal Name to LinkedIn, Website & Domain",
+  "description": "Resolves a company name, legal name (razón social), or LinkedIn company URL into one enrichment row: LinkedIn, official website, domain, employees, HQ, confidence and evidence. Built for prospecting, CRM enrichment and LinkedIn Ads.",
   "version": "0.1",
+  "meta": {
+    "canonicalOrigin": "https://github.com/Parvusmedia/Full-Company-identity-resolver"
+  },
   "build": {
     "dockerfile": "../Dockerfile"
   },
-  "input": "./input_schema.json"
+  "input": "./input_schema.json",
+  "storages": {
+    "dataset": "./dataset_schema.json"
+  }
 }

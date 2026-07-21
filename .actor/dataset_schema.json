@@ -1,0 +1,72 @@
+{
+  "actorSpecification": 1,
+  "fields": {
+    "legal_name": {
+      "type": "string",
+      "title": "Legal / input name",
+      "description": "Company legal name or brand name as provided in the input."
+    },
+    "commercial_name": {
+      "type": "string",
+      "title": "Commercial name",
+      "description": "Public / LinkedIn display name when enrichment succeeds."
+    },
+    "linkedin_url": {
+      "type": "string",
+      "title": "LinkedIn company URL",
+      "description": "Normalized linkedin.com/company/… URL."
+    },
+    "website": {
+      "type": "string",
+      "title": "Official website",
+      "description": "Homepage URL after noise filtering and validation."
+    },
+    "domain": {
+      "type": "string",
+      "title": "Domain",
+      "description": "Registrable domain of the official website."
+    },
+    "industry": {
+      "type": "string",
+      "title": "Industry"
+    },
+    "employee_count": {
+      "type": "integer",
+      "title": "Employee count"
+    },
+    "followers": {
+      "type": "integer",
+      "title": "LinkedIn followers"
+    },
+    "headquarters_city": {
+      "type": "string",
+      "title": "HQ city"
+    },
+    "headquarters_country": {
+      "type": "string",
+      "title": "HQ country"
+    },
+    "match_status": {
+      "type": "string",
+      "title": "Match status",
+      "description": "confirmed | high_confidence | probable | ambiguous | partial | not_found"
+    },
+    "confidence": {
+      "type": "number",
+      "title": "Confidence score"
+    },
+    "relationship": {
+      "type": "string",
+      "title": "Entity relationship",
+      "description": "same_entity | commercial_brand | parent_company | subsidiary | …"
+    },
+    "evidence_summary": {
+      "type": "string",
+      "title": "Evidence summary"
+    },
+    "enrichment_status": {
+      "type": "string",
+      "title": "Enrichment status"
+    }
+  }
+}
