@@ -53,9 +53,11 @@ def build_website_query(
     "Insurance Manager"), stripping legal forms makes Google match unrelated
     global products (provider portals). Keep the soft full legal name then.
 
-    For ES searches without a city, append "España" so short/acronym names
-    (EGM, Cover Seguros) stay on Spanish SERPs instead of directories/foreign twins.
+    Do **not** append a hard-coded country name (e.g. "España"). Geo bias comes
+    from the Google Search Actor ``countryCode`` / language settings so the same
+    query works for ES, FR, LATAM, … batches.
     """
+    del country_code  # geo bias is Actor countryCode, not query text
     raw = re.sub(r"\s+", " ", (legal_name or "").strip())
     core = remove_legal_forms(raw).strip() or raw
     # Generic English/brand cores: keep S.L. / legal form so SERP stays local.
@@ -65,11 +67,6 @@ def build_website_query(
         base = core
     if city and city.strip():
         return f"{base} {city.strip()}"
-    cc = (country_code or "").strip().lower()
-    if cc == "es":
-        low = base.casefold()
-        if "españa" not in low and "espana" not in low and "spain" not in low:
-            return f"{base} España"
     return base
 
 

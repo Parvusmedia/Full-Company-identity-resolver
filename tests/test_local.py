@@ -718,7 +718,8 @@ def test_generic_name_prefers_matching_google_domain() -> None:
     wq = build_website_query(legal, country_code="es")
     assert "S.L" in wq or "S.L." in wq
     assert '"' not in wq
-    assert "España" in wq
+    assert "España" not in wq
+    assert "Espana" not in wq
 
     evidences = [
         GoogleEvidence(
@@ -740,7 +741,9 @@ def test_generic_name_prefers_matching_google_domain() -> None:
             domain="bcbssc.com",
         ),
     ]
-    cands = build_website_candidates(evidences, legal, prefer_local_es=True)
+    cands = build_website_candidates(
+        evidences, legal, country_code="es", sector_hints=frozenset({"insurance"})
+    )
     assert cands, "expected insurance-manager.es candidate"
     assert cands[0].domain == "insurance-manager.es"
     assert all(c.domain != "bcbssc.com" for c in cands)
@@ -751,23 +754,33 @@ def test_generic_name_prefers_matching_google_domain() -> None:
         google_website="https://www.insurance-manager.es/",
         google_domain="insurance-manager.es",
         google_content_backed=True,
+        country_code="es",
     )
     assert domain == "insurance-manager.es"
     assert website == "https://www.insurance-manager.es/"
     assert harvest == "https://www.theinsurancemanager.co.uk/"
-    print("OK generic-name website: Google #1 domain wins, bcbssc rejected, .es beats UK Harvest")
+    print("OK generic-name website: Google #1 domain wins, bcbssc rejected, local beats UK Harvest")
 
 
 def test_batch_es_rejects_directories_and_foreign_twins() -> None:
     """EGM/QDQ, Cover Colombia, Eureka Italy, garbage hosts must not win for ES."""
-    from my_actor.normalization import is_foreign_to_spain_domain, is_noise_website_domain, is_garbage_website_domain
+    from my_actor.normalization import (
+        collect_sector_hints_from_evidences,
+        extract_sector_hints,
+        is_foreign_to_spain_domain,
+        is_mismatched_country_domain,
+        is_noise_website_domain,
+        is_garbage_website_domain,
+    )
     from my_actor.google_search import build_website_query
 
     assert is_noise_website_domain("qdq.com")
     assert is_noise_website_domain("f6s.com")
     assert is_noise_website_domain("ilo.org")
     assert is_foreign_to_spain_domain("eureka-ins.it")
-    assert is_foreign_to_spain_domain("globalcoverseguros.com.co")
+    assert is_mismatched_country_domain("eureka-ins.it", "es")
+    assert is_mismatched_country_domain("globalcoverseguros.com.co", "es")
+    assert not is_mismatched_country_domain("globalcoverseguros.com.co", "co")
     assert is_foreign_to_spain_domain("asegura.com.br")
     assert not is_foreign_to_spain_domain("weecover.com")
     assert not is_foreign_to_spain_domain("wtwco.com")
@@ -776,8 +789,18 @@ def test_batch_es_rejects_directories_and_foreign_twins() -> None:
     assert is_garbage_website_domain("plataforma.para")
     assert is_garbage_website_domain("linkedin.explora")
 
+    # Geo bias is Actor countryCode — query text must stay country-agnostic.
     egm_q = build_website_query("Egm Correduria De Seguros", country_code="es")
-    assert "España" in egm_q
+    assert "España" not in egm_q
+    assert "Egm" in egm_q or "EGM" in egm_q or "egm" in egm_q.lower()
+
+    # Directory SERP snippets still yield sector hints (even when domain is noise).
+    dir_hints = extract_sector_hints(
+        "Coverly, Corredores De Seguros Y Reaseguros SL",
+        "LA REALIZACIÓN DE ACTIVIDADES PROPIAS DE CORREDURÍA DE SEGUROS",
+        "CNAE 6622 - Actividades de agentes y corredores",
+    )
+    assert "insurance" in dir_hints
 
     egm = build_website_candidates(
         [
@@ -801,42 +824,57 @@ def test_batch_es_rejects_directories_and_foreign_twins() -> None:
             ),
         ],
         "Egm Correduria De Seguros",
-        prefer_local_es=True,
+        country_code="es",
+        sector_hints=frozenset({"insurance"}),
     )
     assert egm and egm[0].domain == "egmseguros.com"
     assert all(c.domain != "qdq.com" for c in egm)
 
+    cover_ev = [
+        GoogleEvidence(
+            query="Cover Seguros",
+            query_type="website",
+            position=1,
+            title="Global Cover Seguros Colombia",
+            snippet="Cover Seguros",
+            url="https://www.globalcoverseguros.com.co/",
+            domain="globalcoverseguros.com.co",
+        ),
+        GoogleEvidence(
+            query="Cover Seguros",
+            query_type="website",
+            position=2,
+            title="Cover Seguros",
+            snippet="Cover Correduría de Seguros España",
+            url="https://www.coverseguros.com/",
+            domain="coverseguros.com",
+        ),
+        GoogleEvidence(
+            query="Cover Seguros",
+            query_type="website",
+            position=3,
+            title="Coverly, Corredores De Seguros Y Reaseguros SL - eInforma",
+            snippet="CNAE 6622 Actividades de agentes y corredores de seguros",
+            url="https://www.einforma.com/servlet/app/portal/1/1/descargable/empresa/coverly",
+            domain="einforma.com",
+        ),
+    ]
+    cover_hints = collect_sector_hints_from_evidences("Cover Seguros", cover_ev)
+    assert "insurance" in cover_hints
     cover = build_website_candidates(
-        [
-            GoogleEvidence(
-                query="Cover Seguros España",
-                query_type="website",
-                position=1,
-                title="Global Cover Seguros Colombia",
-                snippet="Cover Seguros",
-                url="https://www.globalcoverseguros.com.co/",
-                domain="globalcoverseguros.com.co",
-            ),
-            GoogleEvidence(
-                query="Cover Seguros España",
-                query_type="website",
-                position=2,
-                title="Cover Seguros",
-                snippet="Cover Correduría de Seguros España",
-                url="https://www.coverseguros.com/",
-                domain="coverseguros.com",
-            ),
-        ],
+        [e for e in cover_ev if e.domain != "einforma.com"],
         "Cover Seguros",
-        prefer_local_es=True,
+        country_code="es",
+        sector_hints=cover_hints,
     )
     assert cover and cover[0].domain == "coverseguros.com"
-    assert all("com.co" not in (c.domain or "") for c in cover)
+    # Soft geo: Colombia twin may remain as a low-ranked candidate, must not win.
+    assert cover[0].domain != "globalcoverseguros.com.co"
 
     eureka = build_website_candidates(
         [
             GoogleEvidence(
-                query="Eureka Brokers España",
+                query="Eureka Brokers",
                 query_type="website",
                 position=1,
                 title="Eureka Insurance Broker Italia",
@@ -846,15 +884,70 @@ def test_batch_es_rejects_directories_and_foreign_twins() -> None:
             ),
         ],
         "Eureka Brokers Correduria De Seguros Sl",
-        prefer_local_es=True,
+        country_code="es",
+        sector_hints=frozenset({"insurance"}),
     )
+    # Soft: Italy twin may appear but is heavily penalized vs preferred country.
+    if eureka:
+        assert is_mismatched_country_domain(eureka[0].domain, "es")
     assert is_foreign_to_spain_domain("gestioneducativa.pe")
     assert is_foreign_to_spain_domain("profundizar.si")
     from my_actor.normalization import is_insurer_portal_domain
     assert is_insurer_portal_domain("allianz.es", "Aga Correduria De Seguros Arribas S.L.")
     assert is_insurer_portal_domain("kpmg.com", "Servicios Profesionales Financieros 2019, S.L.")
     assert not is_insurer_portal_domain("allianz.es", "Allianz Compañia De Seguros Y Reaseguros S.A.")
-    print("OK ES batch guards: QDQ/foreign twins/garbage rejected")
+    print("OK ES batch guards: QDQ/foreign twins/garbage + sector hints from directories")
+
+
+def test_country_relative_tld_not_spain_hardcoded() -> None:
+    """FR batch must prefer .fr over .es twins; .com stays valid everywhere."""
+    from my_actor.normalization import is_mismatched_country_domain, domain_matches_country
+    from my_actor.scoring import build_website_candidates
+
+    assert domain_matches_country("acme.fr", "fr")
+    assert is_mismatched_country_domain("acme.es", "fr")
+    assert not is_mismatched_country_domain("acme.com", "fr")
+    assert not is_mismatched_country_domain("acme.com", "es")
+
+    legal = "Acme Assurances SAS"
+    cands = build_website_candidates(
+        [
+            GoogleEvidence(
+                query="Acme Assurances",
+                query_type="website",
+                position=1,
+                title="Acme Assurances España",
+                snippet="Correduría Acme",
+                url="https://www.acme.es/",
+                domain="acme.es",
+            ),
+            GoogleEvidence(
+                query="Acme Assurances",
+                query_type="website",
+                position=2,
+                title="Acme Assurances",
+                snippet="Courtier d'assurances Paris",
+                url="https://www.acme-assurances.fr/",
+                domain="acme-assurances.fr",
+            ),
+        ],
+        legal,
+        country_code="fr",
+        sector_hints=frozenset({"insurance"}),
+    )
+    assert cands and cands[0].domain == "acme-assurances.fr"
+
+    website, domain, _, harvest = select_official_website(
+        legal_name=legal,
+        harvest_website="https://www.acme.es/",
+        google_website="https://www.acme-assurances.fr/",
+        google_domain="acme-assurances.fr",
+        google_content_backed=True,
+        country_code="fr",
+    )
+    assert domain == "acme-assurances.fr"
+    assert harvest == "https://www.acme.es/"
+    print("OK country-relative TLD preference (FR batch)")
 
 
 def main() -> None:
@@ -878,6 +971,7 @@ def main() -> None:
     test_extract_linkedin_from_homepage_html()
     test_generic_name_prefers_matching_google_domain()
     test_batch_es_rejects_directories_and_foreign_twins()
+    test_country_relative_tld_not_spain_hardcoded()
     print("\nAll local checks passed.")
 
 

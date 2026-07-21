@@ -45,7 +45,8 @@ from .normalization import (
     core_name,
     domain_label,
     extract_registrable_domain,
-    is_foreign_to_spain_domain,
+    collect_sector_hints_from_evidences,
+    is_mismatched_country_domain,
     is_noise_website_domain,
     normalize_homepage_url,
     normalize_linkedin_company_url,
@@ -253,18 +254,21 @@ def _sanitize_final_website(
     *,
     legal_name: str,
     content_backed: bool,
+    country_code: str | None = None,
 ) -> tuple[str | None, str | None, str | None]:
-    """Last-resort guard: never publish noise/garbage/foreign lookalike websites."""
-    del content_backed  # foreign/noise never get a pass from title-only backing
-    from .normalization import is_insurer_portal_domain
+    """Last-resort guard: never publish noise/garbage/insurer-portal websites.
+
+    Country-mismatched ccTLDs are handled in scoring / select_official_website
+    (soft preference). Do not hard-drop them here — a FR/BR/… batch must keep
+    its own ccTLD, and .com brands must survive ES batches.
+    """
+    del content_backed, country_code
+    from .normalization import is_garbage_website_domain, is_insurer_portal_domain
 
     dom = domain or extract_registrable_domain(website)
     if not website or not dom:
         return None, None, google_website
-    if is_noise_website_domain(dom):
-        return None, None, google_website
-    # Always drop foreign ccTLDs in ES runs (Cover Colombia, Eureka IT, …).
-    if is_foreign_to_spain_domain(dom):
+    if is_noise_website_domain(dom) or is_garbage_website_domain(dom):
         return None, None, google_website
     if is_insurer_portal_domain(dom, legal_name):
         return None, None, google_website
@@ -309,6 +313,7 @@ def _result_from_selection(
     ai_decision: dict[str, Any] | None,
     debug: bool,
     error: str | None = None,
+    country_code: str | None = None,
 ) -> ResolutionResult:
     raw_google_website = website_candidates[0].url if website_candidates else None
     raw_google_domain = website_candidates[0].domain if website_candidates else None
@@ -321,6 +326,7 @@ def _result_from_selection(
             google_website=raw_google_website,
             google_domain=raw_google_domain,
             google_content_backed=content_backed,
+            country_code=country_code,
         )
         website, domain, google_website = _sanitize_final_website(
             website,
@@ -328,6 +334,7 @@ def _result_from_selection(
             google_website,
             legal_name=company.legal_name,
             content_backed=content_backed,
+            country_code=country_code,
         )
         result = _empty_result(company, error=error, status=status)
         result.google_queries_used = google_queries_used
@@ -357,6 +364,7 @@ def _result_from_selection(
         google_website=raw_google_website,
         google_domain=raw_google_domain,
         google_content_backed=content_backed,
+        country_code=country_code,
     )
     website, domain, google_website = _sanitize_final_website(
         website,
@@ -364,10 +372,12 @@ def _result_from_selection(
         google_website,
         legal_name=company.legal_name,
         content_backed=content_backed,
+        country_code=country_code,
     )
 
-    # If the only website was a foreign/noise twin and we dropped it, also drop the
-    # LinkedIn page that came from that twin (Eureka IT, Asegura BR, QDQ, …).
+    # If the only website was a noise twin and we dropped it, also drop the
+    # LinkedIn page that came from that twin (QDQ, directories, …).
+    # Country-mismatched Harvest twins that lost to Google also detach LinkedIn.
     harvest_dom_for_guard = extract_registrable_domain(
         str(harvest_website_raw) if harvest_website_raw else None
     )
@@ -376,7 +386,7 @@ def _result_from_selection(
         and harvest_dom_for_guard
         and (
             is_noise_website_domain(harvest_dom_for_guard)
-            or is_foreign_to_spain_domain(harvest_dom_for_guard)
+            or is_mismatched_country_domain(harvest_dom_for_guard, country_code)
         )
     )
 
@@ -539,7 +549,6 @@ async def resolve_company(
         country_code=settings.country_code,
     )
     google_queries_used.extend(initial_queries)
-    prefer_local_es = (settings.country_code or "").lower() == "es"
 
     if prefetched_evidences is None:
         evidences, ai_overviews = await run_google_searches(
@@ -592,12 +601,15 @@ async def resolve_company(
         linkedin_evidences = filter_linkedin_evidences(evidences)
 
     website_query_evidences = [e for e in evidences if e.query_type == WEBSITE_QUERY]
+    # Sector hints from full SERP (including directories like eInforma/Axesor).
+    sector_hints = collect_sector_hints_from_evidences(company.legal_name, website_query_evidences)
     # Never fall back to LinkedIn SERP URLs as websites — that invents false domains.
     website_evidences = filter_website_evidences(website_query_evidences)
     website_candidates = build_website_candidates(
         website_evidences,
         company.legal_name,
-        prefer_local_es=prefer_local_es,
+        country_code=settings.country_code,
+        sector_hints=sector_hints,
     )
     if settings.validate_websites and website_candidates:
         website_candidates = await validate_website_candidates(
@@ -616,14 +628,9 @@ async def resolve_company(
             city=company.city,
             country_code=settings.country_code,
         )
-        # Drop foreign lookalikes from AI organic bridge when searching ES.
+        # Soft-penalize foreign lookalikes in AI organic bridge via scoring;
+        # keep them available — country preference is relative to settings.
         ai_organic = website_evidences
-        if prefer_local_es:
-            ai_organic = [
-                e
-                for e in website_evidences
-                if not is_foreign_to_spain_domain(e.domain or extract_registrable_domain(e.url))
-            ]
         ai_cand = website_candidate_from_ai_overview(
             company.legal_name,
             company_ai,
@@ -654,6 +661,8 @@ async def resolve_company(
             actor_id=settings.google_maps_actor_id,
             city=company.city,
             province=company.province,
+            country=company.country,
+            language_code=settings.language_code,
             max_places=settings.google_maps_max_places,
         )
         if maps_candidates:
@@ -917,9 +926,9 @@ async def resolve_company(
                 confidence = round((selected.final_score * 0.6) + (ai_decision.confidence * 0.4), 2)
             status = classify_match_status(confidence, None, has_candidates=True)
 
-    # When Google .es will beat a foreign Harvest twin, ensure homepage LinkedIn
-    # is available on the winning website probe (discovery is skipped if Google
-    # already returned some /company/ hit — often the wrong-country twin).
+    # When Google will beat a country-mismatched Harvest twin, ensure homepage
+    # LinkedIn is available on the winning website probe (discovery is skipped if
+    # Google already returned some /company/ hit — often the wrong-country twin).
     if selected and website_candidates:
         top_w = website_candidates[0]
         h_raw = (selected.harvest or {}).get("website") if selected.harvest else None
@@ -927,16 +936,17 @@ async def resolve_company(
         g_dom = top_w.domain
         if (
             g_dom
-            and g_dom.endswith(".es")
             and h_dom
-            and not str(h_dom).endswith(".es")
+            and g_dom != h_dom
+            and is_mismatched_country_domain(h_dom, settings.country_code)
+            and not is_mismatched_country_domain(g_dom, settings.country_code)
             and _top_website_is_content_backed(website_candidates, company.legal_name)
         ):
             probe = top_w.homepage_probe if isinstance(top_w.homepage_probe, dict) else {}
             lis = [str(u) for u in (probe.get("linkedin_urls") or []) if u]
             if not lis:
                 Actor.log.info(
-                    "Foreign Harvest twin (%s); scraping LinkedIn from Google website %s",
+                    "Mismatched-country Harvest twin (%s); scraping LinkedIn from Google website %s",
                     h_dom,
                     top_w.url,
                 )
@@ -961,6 +971,7 @@ async def resolve_company(
         commercial_name=commercial_name,
         ai_decision=ai_decision_dict,
         debug=settings.debug,
+        country_code=settings.country_code,
     )
 
 

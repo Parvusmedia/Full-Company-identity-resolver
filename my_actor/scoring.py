@@ -13,14 +13,16 @@ from .normalization import (
     core_name,
     distinctive_name_tokens,
     domain_label,
+    domain_matches_country,
     evidence_looks_like_directory_listing,
     extract_registrable_domain,
-    is_foreign_to_spain_domain,
     is_insurer_portal_domain,
+    is_mismatched_country_domain,
     is_noise_website_domain,
     looks_like_parent_or_group_name,
     normalize_homepage_url,
     normalize_text,
+    sector_alignment_delta,
     slug_from_linkedin_url,
     text_mentions_company,
     title_looks_like_registry,
@@ -460,6 +462,8 @@ def build_website_candidates(
     evidences: list[GoogleEvidence],
     legal_name: str,
     *,
+    country_code: str | None = None,
+    sector_hints: frozenset[str] | set[str] | None = None,
     prefer_local_es: bool = False,
 ) -> list[WebsiteCandidate]:
     by_domain: dict[str, WebsiteCandidate] = {}
@@ -467,21 +471,18 @@ def build_website_candidates(
     originals: dict[str, list[str]] = {}
     core = core_name(legal_name)
     legal_tokens = set(core.split())
-    wants_local_es = bool(_normalize_qualifier_set(legal_tokens & _ENTITY_QUALIFIER_TOKENS)) or prefer_local_es
+    cc = (country_code or ("es" if prefer_local_es else None) or "").strip().lower() or None
+    # Local-entity cue from name qualifiers (Iberia/España/…) OR batch country.
+    wants_local = bool(_normalize_qualifier_set(legal_tokens & _ENTITY_QUALIFIER_TOKENS)) or bool(cc)
+    hints = frozenset(sector_hints or ())
     for ev in evidences:
         domain = extract_registrable_domain(ev.url)
         if not domain or is_noise_website_domain(domain):
             continue
         if is_insurer_portal_domain(domain, legal_name):
             continue
-        # Spanish SERPs: drop Italy/Brazil/Colombia lookalikes unless they are
-        # true about/legal-notice self-ID pages (rare). Preserves .com brands
-        # (Weecover, WTW) while rejecting eureka-ins.it / *.com.co twins.
-        if prefer_local_es and is_foreign_to_spain_domain(domain):
-            snip_ok = text_mentions_company(ev.snippet or "", legal_name)
-            path_ok = website_path_looks_about(ev.url) or website_path_looks_legal_notice(ev.url)
-            if not (snip_ok and path_ok):
-                continue
+        # Soft geo: keep mismatched-country domains in the pool so ranking can
+        # prefer a better local/.com match — do not hard-drop them.
         existing = by_domain.get(domain)
         if existing is None:
             existing = WebsiteCandidate(url=ev.url, domain=domain, google_evidences=[ev], score=0.0)
@@ -503,9 +504,14 @@ def build_website_candidates(
         legal_notice_backed = False
         editorial_only = True
         directory_listing = False
+        best_title = ""
+        best_snippet = ""
         for ev, original_url in zip(cand.google_evidences, originals.get(cand.domain, [])):
             title_sim = name_similarity(core, ev.title or "")
-            best_title_sim = max(best_title_sim, title_sim)
+            if title_sim >= best_title_sim:
+                best_title_sim = title_sim
+                best_title = ev.title or ""
+                best_snippet = ev.snippet or ""
             title_hit = text_mentions_company(ev.title or "", legal_name)
             snippet_hit = text_mentions_company(ev.snippet or "", legal_name)
             if title_looks_like_registry(ev.title):
@@ -594,15 +600,25 @@ def build_website_candidates(
                 score += 8.0
             if content_backed and ev.position is not None and ev.position <= 3:
                 score += 6.0
-        # Prefer Spanish ccTLD for local entities — but not full boost for
-        # legal-notice-only third-party hosts.
-        if wants_local_es and cand.domain.endswith(".es"):
+
+        # Country-relative TLD preference (boost matching ccTLD; soft-penalize
+        # other countries' ccTLDs). Generic .com/.net/.org/.eu stay neutral.
+        if wants_local and domain_matches_country(cand.domain, cc):
             if about_backed or domain_looks_owned or not legal_notice_backed:
                 score += 18.0
             else:
                 score += 4.0
-        elif wants_local_es and cand.domain.endswith((".com", ".fr", ".pt", ".de")) and domain_sim >= 80:
-            score -= 12.0
+        elif wants_local and is_mismatched_country_domain(cand.domain, cc):
+            score -= 28.0
+
+        sector_delta, _sector_reasons = sector_alignment_delta(
+            title=best_title,
+            snippet=best_snippet,
+            domain=cand.domain,
+            sector_hints=hints,
+        )
+        score += sector_delta
+
         cand.score = score
         cand.url = normalize_homepage_url(cand.url) or cand.url
         kept.append(cand)

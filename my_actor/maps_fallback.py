@@ -117,6 +117,8 @@ async def run_google_maps_fallback(
     actor_id: str = "compass/crawler-google-places",
     city: str | None = None,
     province: str | None = None,
+    country: str | None = None,
+    language_code: str | None = None,
     max_places: int = 5,
 ) -> list[WebsiteCandidate]:
     """Last-resort Maps lookup when Google Search found no usable website."""
@@ -132,14 +134,16 @@ async def run_google_maps_fallback(
     run_input: dict[str, Any] = {
         "searchStringsArray": [search],
         "maxCrawledPlacesPerSearch": max(1, min(max_places, 10)),
-        "language": "es",
+        "language": (language_code or "es").strip().lower()[:2] or "es",
         "maxImages": 0,
         "scrapeContacts": False,
         "includeWebResults": False,
         "skipClosedPlaces": False,
     }
-    # Prefer city/province as location bias when available.
-    location = ", ".join(p for p in [(city or "").strip(), (province or "").strip(), "España"] if p)
+    # Prefer city/province/country as location bias when available (batch-relative).
+    location = ", ".join(
+        p for p in [(city or "").strip(), (province or "").strip(), (country or "").strip()] if p
+    )
     if location:
         run_input["locationQuery"] = location
 

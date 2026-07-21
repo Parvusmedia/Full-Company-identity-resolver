@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from typing import Any
 from urllib.parse import unquote, urlparse, urlunparse
 
 LEGAL_FORMS = [
@@ -751,9 +752,9 @@ def is_garbage_website_domain(domain: str | None) -> bool:
     return False
 
 
-# Country-coded TLDs that are usually wrong for Spanish legal entities / ES SERPs.
-# Keep .com/.net/.org/.eu as internationally OK (Weecover, WTW, etc.).
-_FOREIGN_TO_SPAIN_SUFFIXES = (
+# Country-specific suffixes (longest first). Generic gTLDs (.com/.net/.org/.eu)
+# are intentionally excluded — they are valid everywhere (Weecover, WTW, …).
+_COUNTRY_SPECIFIC_SUFFIXES = (
     ".com.br",
     ".com.mx",
     ".com.ar",
@@ -762,6 +763,7 @@ _FOREIGN_TO_SPAIN_SUFFIXES = (
     ".com.pe",
     ".com.cl",
     ".co.uk",
+    ".org.uk",
     ".org.br",
     ".br",
     ".mx",
@@ -805,16 +807,182 @@ _FOREIGN_TO_SPAIN_SUFFIXES = (
     ".bg",
     ".hr",
     ".rs",
+    ".es",
+    ".cat",
+)
+
+# Preferred ccTLDs per ISO country_code used by the Google Search Actor.
+_PREFERRED_SUFFIXES_BY_COUNTRY: dict[str, tuple[str, ...]] = {
+    "es": (".es", ".cat"),
+    "fr": (".fr",),
+    "it": (".it",),
+    "pt": (".pt", ".com.pt"),
+    "de": (".de",),
+    "uk": (".co.uk", ".org.uk", ".uk"),
+    "gb": (".co.uk", ".org.uk", ".uk"),
+    "br": (".com.br", ".org.br", ".br"),
+    "mx": (".com.mx", ".mx"),
+    "ar": (".com.ar", ".ar"),
+    "co": (".com.co",),
+    "cl": (".cl", ".com.cl"),
+    "pe": (".pe", ".com.pe"),
+    "be": (".be",),
+    "nl": (".nl",),
+    "ch": (".ch",),
+    "at": (".at",),
+    "ie": (".ie",),
+}
+
+_GENERIC_GTLD_SUFFIXES = (
+    ".com",
+    ".net",
+    ".org",
+    ".eu",
+    ".io",
+    ".app",
+    ".dev",
+    ".biz",
+    ".info",
+    ".xyz",
+    ".online",
+    ".tech",
+    ".site",
+    ".cloud",
+    ".co",  # bare .co is widely used as a brand TLD; Colombia uses .com.co
 )
 
 
-def is_foreign_to_spain_domain(domain: str | None) -> bool:
-    """True for clearly non-Spanish ccTLDs (Italy/Brazil/Colombia/… lookalikes)."""
+def preferred_domain_suffixes(country_code: str | None) -> tuple[str, ...]:
+    cc = (country_code or "").strip().lower()
+    return _PREFERRED_SUFFIXES_BY_COUNTRY.get(cc, ())
+
+
+def is_generic_gtld_domain(domain: str | None) -> bool:
     if not domain:
         return False
     d = domain.lower().removeprefix("www.")
-    # Check longer suffixes first (.com.br before .br).
-    return any(d.endswith(suf) for suf in _FOREIGN_TO_SPAIN_SUFFIXES)
+    if any(d.endswith(suf) for suf in _COUNTRY_SPECIFIC_SUFFIXES):
+        return False
+    return any(d.endswith(suf) for suf in _GENERIC_GTLD_SUFFIXES)
+
+
+def domain_matches_country(domain: str | None, country_code: str | None) -> bool:
+    """True when the domain uses the batch country's preferred ccTLD."""
+    preferred = preferred_domain_suffixes(country_code)
+    if not domain or not preferred:
+        return False
+    d = domain.lower().removeprefix("www.")
+    return any(d.endswith(suf) for suf in preferred)
+
+
+def is_mismatched_country_domain(domain: str | None, country_code: str | None) -> bool:
+    """True when the domain uses another country's ccTLD (not a generic gTLD).
+
+    Soft geo signal for scoring — never a hard "only .es" rule. Unknown
+    country codes or unknown TLDs are treated as non-mismatched.
+    """
+    if not domain:
+        return False
+    preferred = preferred_domain_suffixes(country_code)
+    if not preferred:
+        return False
+    d = domain.lower().removeprefix("www.")
+    if any(d.endswith(suf) for suf in preferred):
+        return False
+    if is_generic_gtld_domain(d):
+        return False
+    return any(d.endswith(suf) for suf in _COUNTRY_SPECIFIC_SUFFIXES)
+
+
+def is_foreign_to_spain_domain(domain: str | None) -> bool:
+    """Backward-compatible alias: mismatched vs Spain (country_code=es)."""
+    return is_mismatched_country_domain(domain, "es")
+
+
+# Sector cues mined from SERP titles/snippets — including directories that are
+# rejected as official websites (eInforma, Axesor, …). Used only as scoring hints.
+_SECTOR_HINT_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "insurance": (
+        re.compile(r"\bseguros?\b", re.IGNORECASE),
+        re.compile(r"\bcorredur", re.IGNORECASE),
+        re.compile(r"\breaseguro", re.IGNORECASE),
+        re.compile(r"\bmediadores?\b", re.IGNORECASE),
+        re.compile(r"\bcnae\s*6622\b", re.IGNORECASE),
+        re.compile(r"\binsurance\b", re.IGNORECASE),
+        re.compile(r"\bbrokers?\b", re.IGNORECASE),
+        re.compile(r"\binsurtech\b", re.IGNORECASE),
+        re.compile(r"\bassurances?\b", re.IGNORECASE),
+        re.compile(r"\bpolizas?\b", re.IGNORECASE),
+        re.compile(r"\basegurador", re.IGNORECASE),
+    ),
+}
+
+_OFF_SECTOR_MARKERS: dict[str, tuple[str, ...]] = {
+    "insurance": (
+        "montessori",
+        "colegio",
+        "escuela infantil",
+        "escuela ",
+        "universidad",
+        "university",
+        "school ",
+        "football",
+        "soccer",
+        "restaurant",
+        "hotel ",
+        "turismo escolar",
+    ),
+}
+
+
+def extract_sector_hints(*texts: str | None) -> frozenset[str]:
+    """Return sector keys detected in free text (legal name, SERP title/snippet)."""
+    blob = " ".join(t for t in texts if t)
+    if not blob.strip():
+        return frozenset()
+    found: set[str] = set()
+    for sector, patterns in _SECTOR_HINT_PATTERNS.items():
+        if any(p.search(blob) for p in patterns):
+            found.add(sector)
+    return frozenset(found)
+
+
+def collect_sector_hints_from_evidences(
+    legal_name: str,
+    evidences: list[Any],
+) -> frozenset[str]:
+    """Mine sector hints from legal name + all SERP rows (including directories)."""
+    texts: list[str | None] = [legal_name]
+    for ev in evidences:
+        texts.append(getattr(ev, "title", None))
+        texts.append(getattr(ev, "snippet", None))
+    return extract_sector_hints(*texts)
+
+
+def sector_alignment_delta(
+    *,
+    title: str | None,
+    snippet: str | None,
+    domain: str | None,
+    sector_hints: frozenset[str] | set[str] | None,
+) -> tuple[float, list[str]]:
+    """Score delta for a website candidate vs mined sector hints."""
+    if not sector_hints:
+        return 0.0, []
+    blob = f"{title or ''} {snippet or ''} {domain or ''}"
+    blob_n = normalize_text(blob)
+    delta = 0.0
+    reasons: list[str] = []
+    for sector in sector_hints:
+        patterns = _SECTOR_HINT_PATTERNS.get(sector) or ()
+        if any(p.search(blob) for p in patterns):
+            delta += 14.0
+            reasons.append(f"sector_match:{sector}")
+        off = _OFF_SECTOR_MARKERS.get(sector) or ()
+        if any(marker in blob_n for marker in off):
+            delta -= 22.0
+            reasons.append(f"sector_mismatch:{sector}")
+    return delta, reasons
 
 
 _DISPOSABLE_SUBDOMAINS = frozenset(
@@ -963,23 +1131,24 @@ def select_official_website(
     google_domain: str | None,
     google_content_backed: bool = False,
     min_domain_similarity: float = 55.0,
+    country_code: str | None = None,
 ) -> tuple[str | None, str | None, str | None, str | None]:
     """
     Choose a clean official homepage.
 
     Returns (website, domain, google_website_clean, harvest_website_clean).
 
-    Priority: Harvest website is the primary signal when present and not noise.
-    Google may override only when Harvest is missing/mismatched and Google is
-    clearly better (strong domain match or trusted content-backed brand page).
+    Pipeline priority (website selection):
+      1. Strong Google result after full SERP analysis (content-backed / name match)
+      2. Harvest website only when Google is missing or clearly weaker
+      3. Soft country-ccTLD preference from ``country_code`` (never hard .es-only)
+
+    Harvest URLs that lose are still returned as evidence (4th tuple slot).
     """
     from rapidfuzz import fuzz
 
     core = core_name(legal_name)
-    legal_tokens = set(core.split())
-    wants_local_es = bool(_normalize_qualifier_set(legal_tokens & _ENTITY_QUALIFIER_TOKENS)) or has_spanish_legal_form(
-        legal_name
-    )
+    cc = (country_code or "").strip().lower() or None
 
     def _sim(domain: str | None) -> float:
         label = domain_label(domain)
@@ -1007,40 +1176,51 @@ def select_official_website(
             google_dom = None
 
     def _rank(sim: float, domain: str | None) -> float:
-        bonus = 6.0 if domain and domain.endswith(".es") else 0.0
+        bonus = 0.0
+        if domain_matches_country(domain, cc):
+            bonus += 8.0
+        elif is_mismatched_country_domain(domain, cc):
+            bonus -= 18.0
         return sim + bonus
 
     harvest_rank = _rank(harvest_sim, harvest_dom) if harvest_clean else -1.0
     google_rank = _rank(google_sim, google_dom) if google_clean else -1.0
 
-    # Never publish foreign-ccTLD Harvest twins for Spanish entities
-    # (Cover → Colombia, Eureka → Italy / UK). Keep URL only for evidence.
-    if harvest_clean and harvest_dom and is_foreign_to_spain_domain(harvest_dom):
-        harvest_clean = None
-        harvest_dom = None
-        harvest_rank = -1.0
+    # Soft: demote Harvest twins on another country's ccTLD so Google can win,
+    # but keep the URL for evidence. Do not hard-null generic .com Harvest sites.
+    harvest_usable = harvest_clean
+    harvest_usable_dom = harvest_dom
+    harvest_usable_rank = harvest_rank
+    if harvest_clean and harvest_dom and is_mismatched_country_domain(harvest_dom, cc):
+        harvest_usable = None
+        harvest_usable_dom = None
+        harvest_usable_rank = -1.0
 
-    # 1) Harvest is authoritative when it looks even loosely related to the company.
-    if harvest_clean and harvest_sim >= 25:
-        # Local .es brand page clearly beats a weaker Harvest site.
+    # 1) Google-first when content-backed or clearly better than Harvest.
+    if google_clean and google_content_backed:
+        if not harvest_usable:
+            return google_clean, google_dom, google_clean, harvest_kept_for_evidence
+        # Near-tie or better → keep the analyzed Google site (avoids UK/CO twins).
+        if google_rank + 5 >= harvest_usable_rank or google_sim >= 70:
+            return google_clean, google_dom, google_clean, harvest_kept_for_evidence
+
+    # 2) Harvest when it is related and Google did not win above.
+    if harvest_usable and harvest_sim >= 25:
         if (
             google_clean
             and google_content_backed
-            and wants_local_es
-            and google_dom
-            and google_dom.endswith(".es")
-            and (google_rank >= harvest_rank + 8 or google_sim >= 70)
+            and google_rank >= harvest_usable_rank + 8
         ):
             return google_clean, google_dom, google_clean, harvest_kept_for_evidence
-        return harvest_clean, harvest_dom, google_clean, harvest_kept_for_evidence
+        return harvest_usable, harvest_usable_dom, google_clean, harvest_kept_for_evidence
 
-    # 2) No usable Harvest → Google (already filtered for noise / content-backed).
+    # 3) Google without Harvest (or weak Harvest).
     if google_clean:
         return google_clean, google_dom, google_clean, harvest_kept_for_evidence
 
-    # 3) Weak Harvest fallback (non-noise but low name↔domain similarity).
-    if harvest_clean and harvest_sim >= 20:
-        return harvest_clean, harvest_dom, google_clean, harvest_kept_for_evidence
+    # 4) Weak Harvest fallback.
+    if harvest_usable and harvest_sim >= 20:
+        return harvest_usable, harvest_usable_dom, google_clean, harvest_kept_for_evidence
 
     return None, None, None, harvest_kept_for_evidence
 
