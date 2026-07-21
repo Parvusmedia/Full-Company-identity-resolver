@@ -149,12 +149,13 @@ async def run_google_maps_fallback(
         "includeWebResults": False,
         "skipClosedPlaces": False,
     }
-    # Prefer city/province/country as location bias when available (batch-relative).
-    location = ", ".join(
-        p for p in [(city or "").strip(), (province or "").strip(), (country or "").strip()] if p
-    )
+    # Prefer city/province as location bias. Do NOT pass bare country alone —
+    # "España" makes the Places crawler fan out across the whole country
+    # (hundreds of map tiles) for vague names like "Set Ahorralo".
+    location = ", ".join(p for p in [(city or "").strip(), (province or "").strip()] if p)
     if location:
         run_input["locationQuery"] = location
+    del country, country_code  # country bias is Actor language + search text only here
 
     items = await call_actor_collect_items(
         token=token,
