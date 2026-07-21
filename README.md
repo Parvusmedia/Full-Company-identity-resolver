@@ -162,6 +162,9 @@ discovered by Google. Response `element` fields are mapped into the output row.
   entity pages. `/posts/` URLs are not turned into fake `/company/` pages.
 - These quality gates are deterministic and add **no** extra Google or Harvest calls.
   Homepage validation does one cheap HTTP GET per top website candidate (default 3).
+- When Search scoring still leaves no website, a free **Google AI Overview** layer
+  reuses overview text/sources already returned by the Google Search Actor (before
+  the paid Google Maps fallback).
 - Cache via named Key-Value Store is intentionally **not** included in this first
   build (priority: correct build → correct run → correct results).
 - No dataset schema is published yet, to keep the Actor definition minimal and valid.
