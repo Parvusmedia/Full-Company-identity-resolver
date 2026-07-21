@@ -155,7 +155,8 @@ async def run_google_maps_fallback(
     location = ", ".join(p for p in [(city or "").strip(), (province or "").strip()] if p)
     if location:
         run_input["locationQuery"] = location
-    del country, country_code  # country bias is Actor language + search text only here
+    # `country` is unused for locationQuery on purpose (nationwide crawl risk).
+    _ = country
 
     items = await call_actor_collect_items(
         token=token,
