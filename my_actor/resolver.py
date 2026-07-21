@@ -140,7 +140,7 @@ def settings_from_input(raw_input: dict[str, Any], *, env_token: str | None, env
             if raw_input.get("max_website_probes") is not None
             else 1
         ),
-        fallback_google_maps=bool(raw_input.get("fallback_google_maps", False)),
+        fallback_google_maps=bool(raw_input.get("fallback_google_maps", True)),
         google_maps_actor_id=raw_input.get("google_maps_actor_id") or "compass/crawler-google-places",
         google_maps_max_places=int(raw_input.get("google_maps_max_places") or 5),
         skip_if_good_website=bool(raw_input.get("skip_if_good_website", True)),
@@ -689,6 +689,7 @@ async def resolve_company(
             city=company.city,
             province=company.province,
             country=company.country,
+            country_code=settings.country_code,
             language_code=settings.language_code,
             max_places=settings.google_maps_max_places,
         )

@@ -165,7 +165,7 @@ async def main() -> None:
             "language_code": "es",
             "debug": False,
             "skip_if_good_website": False,
-            "fallback_google_maps": False,
+            "fallback_google_maps": True,
             "batch_size": 10,
             "max_harvest_candidates": 2,
             "max_website_probes": 2,

@@ -13,6 +13,8 @@ from .normalization import (
     distinctive_name_tokens,
     domain_label,
     extract_registrable_domain,
+    is_insurer_portal_domain,
+    is_mismatched_country_domain,
     is_noise_website_domain,
     normalize_homepage_url,
     normalize_text,
@@ -51,6 +53,8 @@ def _place_title(item: dict[str, Any]) -> str | None:
 def maps_items_to_website_candidates(
     items: list[dict[str, Any]],
     legal_name: str,
+    *,
+    country_code: str | None = None,
 ) -> list[WebsiteCandidate]:
     """Convert Maps places into WebsiteCandidate rows (noise filtered)."""
     from .models import GoogleEvidence
@@ -66,6 +70,10 @@ def maps_items_to_website_candidates(
             continue
         domain = extract_registrable_domain(website)
         if not domain or is_noise_website_domain(domain):
+            continue
+        if is_insurer_portal_domain(domain, legal_name):
+            continue
+        if is_mismatched_country_domain(domain, country_code):
             continue
         title = _place_title(item) or ""
         title_n = normalize_text(title)
@@ -118,6 +126,7 @@ async def run_google_maps_fallback(
     city: str | None = None,
     province: str | None = None,
     country: str | None = None,
+    country_code: str | None = None,
     language_code: str | None = None,
     max_places: int = 5,
 ) -> list[WebsiteCandidate]:
@@ -154,7 +163,7 @@ async def run_google_maps_fallback(
         item_limit=max(10, max_places * 3),
     )
 
-    candidates = maps_items_to_website_candidates(items, legal_name)
+    candidates = maps_items_to_website_candidates(items, legal_name, country_code=country_code)
     Actor.log.info(
         "Google Maps fallback found %s place websites for %s",
         len(candidates),

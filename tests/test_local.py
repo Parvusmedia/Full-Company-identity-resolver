@@ -667,7 +667,7 @@ def test_efficiency_defaults_and_skip() -> None:
     assert len(attr) == 3  # + deferred core LinkedIn
 
     settings = settings_from_input({}, env_token=None, env_harvest=None, env_openai=None)
-    assert settings.fallback_google_maps is False
+    assert settings.fallback_google_maps is True
     assert settings.max_website_probes == 1
     assert settings.skip_if_good_website is True
     assert settings.defer_core_linkedin is True

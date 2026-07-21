@@ -74,7 +74,8 @@ class ActorSettings(BaseModel):
     debug: bool = False
     validate_websites: bool = True
     max_website_probes: int = 1
-    fallback_google_maps: bool = False
+    # Last resort after Google Search + AI Overview found no publishable website.
+    fallback_google_maps: bool = True
     google_maps_actor_id: str = "compass/crawler-google-places"
     google_maps_max_places: int = 5
     skip_if_good_website: bool = True
