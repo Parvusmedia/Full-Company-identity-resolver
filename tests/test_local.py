@@ -542,6 +542,22 @@ def test_ai_overview_website_fallback() -> None:
     assert len(evidences) == 1
     assert len(overviews) == 1
     assert parse_ai_overview(items[0], query) is not None
+    # Screenshot pattern: AI says "filial del grupo WTW" with no website URL;
+    # organic #1 is the WTW Spain portal.
+    screenshot_ai = AiOverviewEvidence(
+        query=query,
+        content=(
+            "Willis Iberia Correduría de Seguros y Reaseguros, S.A. (filial del grupo WTW) "
+            "es una de las corredurías de seguros independientes líderes en España. "
+            "Supervisada por la DGSFP, registro J-974. Sede: Paseo de la Castellana 36-38, Madrid."
+        ),
+        sources=[],
+    )
+    screenshot = website_candidate_from_ai_overview(legal, [screenshot_ai], [organic])
+    assert screenshot is not None
+    assert screenshot.url == "https://servicios-seguros.wtwco.com/"
+    assert screenshot.homepage_probe and screenshot.homepage_probe.get("ai_brand_bridge") is True
+
     # Live-shaped: AI Overview on LinkedIn query mentions firm + WTW, no sources;
     # website organic #1 is the WTW Spain portal.
     live_ai = AiOverviewEvidence(

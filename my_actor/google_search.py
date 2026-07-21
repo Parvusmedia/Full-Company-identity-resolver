@@ -199,14 +199,21 @@ def ai_overview_mentions_company(content: str | None, legal_name: str) -> bool:
 
 def _ai_brand_matches_domain(ai_blob: str, domain: str) -> bool:
     """Loose brand↔domain aliases seen in AI Overviews (WTW → wtwco.com)."""
-    label = (domain.split(".")[0] if domain else "").lower()
+    from .normalization import domain_label
+
+    label = domain_label(domain)
     if not label:
         return False
-    # WTW / Willis Towers Watson group sites
-    if "wtw" in ai_blob.split() or "willis towers watson" in ai_blob or "willis towes watson" in ai_blob:
+    # WTW / Willis Towers Watson group sites — AI often says "filial del grupo WTW"
+    # without citing a URL; organic #1 is then servicios-*.wtwco.com.
+    if "wtw" in ai_blob.split() or "willis towers watson" in ai_blob:
         if label.startswith("wtw") or label in {"willis", "willistowerswatson"}:
             return True
     return False
+
+
+def _ai_mentions_group_brand(ai_blob: str) -> bool:
+    return "wtw" in ai_blob.split() or "willis towers watson" in ai_blob
 
 
 def website_candidate_from_ai_overview(
@@ -217,10 +224,9 @@ def website_candidate_from_ai_overview(
     """
     Final free layer when organic scoring yields nothing.
 
-    Uses Google AI Overview text (already returned by the Search Actor) plus
-    its source URLs / top organic hits. Accepts a non-noise URL only when the
-    overview clearly mentions the company (e.g. Willis Iberia →
-    servicios-seguros.wtwco.com).
+    Pattern (Willis Iberia screenshot): AI Overview names the firm as part of
+    WTW but does not mention a website; organic #1 is the WTW Spain portal.
+    Bridge = company mention in AI + brand/domain match on organic results.
     """
     supporting = [a for a in ai_overviews if ai_overview_mentions_company(a.content, legal_name)]
     if not supporting:
@@ -249,24 +255,26 @@ def website_candidate_from_ai_overview(
         host = (urlparse(ev.url).netloc or "").lower()
         return "linkedin.com" not in host
 
-    # Prefer organic hits whose domain is cited by AI or appears in the overview text.
     ranked_organic = sorted(
         [e for e in organic_website_evidences if _usable(e)],
         key=lambda e: e.position or 99,
     )
     preferred: list[GoogleEvidence] = []
+
+    # 1) Prefer organic whose domain matches AI brand (WTW → wtwco), especially #1.
     for ev in ranked_organic:
         domain = ev.domain or extract_registrable_domain(ev.url) or ""
         host = (urlparse(ev.url).netloc or "").lower().removeprefix("www.")
         title_hit = text_mentions_company(ev.title or "", legal_name)
         snippet_hit = text_mentions_company(ev.snippet or "", legal_name)
+        brand_hit = _ai_brand_matches_domain(ai_blob, domain)
         if (
-            domain in source_domains
+            brand_hit
+            or domain in source_domains
             or domain in ai_blob
             or host.replace(".", "") in ai_blob.replace(" ", "").replace(".", "")
             or title_hit
             or snippet_hit
-            or _ai_brand_matches_domain(ai_blob, domain)
         ):
             preferred.append(ev)
             break
@@ -293,8 +301,8 @@ def website_candidate_from_ai_overview(
             )
             break
 
-    # Last resort within this free layer: AI named the firm but cited no URL —
-    # take the top non-noise website organic (already preferred over Maps).
+    # 2) AI named the firm (+ often the parent brand) but cited no URL —
+    # take top non-noise organic (cheaper than Maps).
     if not preferred and ranked_organic:
         preferred.append(ranked_organic[0])
 
@@ -306,6 +314,8 @@ def website_candidate_from_ai_overview(
     domain = best.domain or extract_registrable_domain(homepage)
     core = core_name(legal_name)
     score = 62.0 + name_similarity(core, best.title or "") * 0.1
+    if _ai_brand_matches_domain(ai_blob, domain or ""):
+        score += 8.0
     return WebsiteCandidate(
         url=homepage,
         domain=domain,
@@ -313,6 +323,8 @@ def website_candidate_from_ai_overview(
         google_evidences=[best],
         homepage_probe={
             "ai_overview_backed": True,
+            "ai_brand_bridge": _ai_mentions_group_brand(ai_blob)
+            and _ai_brand_matches_domain(ai_blob, domain or ""),
             "ai_excerpt": supporting[0].content[:280],
         },
     )

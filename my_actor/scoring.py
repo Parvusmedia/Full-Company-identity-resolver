@@ -24,6 +24,7 @@ from .normalization import (
     token_coverage,
     website_path_looks_about,
     website_path_looks_editorial,
+    title_has_group_brand,
     _ENTITY_QUALIFIER_TOKENS,
     _normalize_qualifier_set,
 )
@@ -501,8 +502,11 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
             about_title = any(
                 t in title_n for t in ("quienes somos", "sobre nosotros", "about us", "about")
             )
+            # Title shows group brand (WTW) while snippet lists the legal name —
+            # classic Willis Iberia → servicios-seguros.wtwco.com SERP pattern.
+            brand_title = title_has_group_brand(ev.title)
             if snippet_hit and not directory_listing and (
-                website_path_looks_about(original_url) or about_title
+                website_path_looks_about(original_url) or about_title or brand_title
             ):
                 about_backed = True
             if not website_path_looks_editorial(original_url):

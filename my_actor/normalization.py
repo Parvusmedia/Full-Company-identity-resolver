@@ -721,6 +721,31 @@ def website_path_looks_about(url: str | None) -> bool:
     return any(marker in path for marker in _ABOUT_PATH_MARKERS)
 
 
+# Commercial / group brands that appear in titles while the legal name is only
+# in the snippet (Willis Iberia → "Quienes Somos - Seguros - WTW").
+_GROUP_BRAND_TITLE_TOKENS = frozenset(
+    {
+        "wtw",
+        "willistowerswatson",
+        "marsh",
+        "mclennan",
+        "aon",
+        "allianz",
+        "axa",
+        "zurich",
+        "generali",
+        "mapfre",
+    }
+)
+
+
+def title_has_group_brand(title: str | None) -> bool:
+    tokens = set(normalize_text(title or "").split())
+    return bool(tokens & _GROUP_BRAND_TITLE_TOKENS) or "willis towers watson" in normalize_text(
+        title or ""
+    )
+
+
 def select_official_website(
     *,
     legal_name: str,
