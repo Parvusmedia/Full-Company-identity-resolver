@@ -16,6 +16,7 @@ from .normalization import (
     normalize_homepage_url,
     normalize_text,
     slug_from_linkedin_url,
+    text_mentions_company,
 )
 
 
@@ -363,16 +364,33 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
     for cand in candidates:
         label = domain_label(cand.domain)
         domain_sim = name_similarity(core, label)
-        # Reject directories/news sites whose domain does not resemble the company.
-        if domain_sim < 50:
+        best_title_sim = 0.0
+        content_backed = False
+        for ev in cand.google_evidences:
+            title_sim = name_similarity(core, ev.title or "")
+            snippet_sim = name_similarity(core, (ev.snippet or "")[:240])
+            best_title_sim = max(best_title_sim, title_sim, snippet_sim)
+            if text_mentions_company(
+                f"{ev.title or ''} {ev.snippet or ''}",
+                legal_name,
+            ):
+                content_backed = True
+        # Accept domain-similar sites, or brand/group sites where Google title/snippet
+        # clearly refer to the company (e.g. Verspieren Iberica → alkora.es).
+        if domain_sim < 50 and not (content_backed and best_title_sim >= 55):
             continue
         score = domain_sim * 0.55
+        if content_backed and domain_sim < 50:
+            score += best_title_sim * 0.45
         for ev in cand.google_evidences:
             bonus, _ = position_bonus(ev.position)
             score += bonus * 0.5
             score += name_similarity(core, ev.title or "") * 0.15
             if ev.query_type == "website":
                 score += 8.0
+            # Prefer earlier organic positions for content-backed brand domains
+            if content_backed and ev.position is not None and ev.position <= 3:
+                score += 6.0
         cand.score = score
         cand.url = normalize_homepage_url(cand.url) or cand.url
         kept.append(cand)

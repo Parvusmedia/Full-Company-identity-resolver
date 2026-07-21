@@ -318,6 +318,66 @@ def domain_label(domain: str | None) -> str:
     return domain.split(".")[0].lower()
 
 
+_WEAK_NAME_TOKENS = frozenset(
+    {
+        "grupo",
+        "group",
+        "holding",
+        "company",
+        "companies",
+        "corp",
+        "corporation",
+        "iberica",
+        "iberia",
+        "espana",
+        "spain",
+        "europe",
+        "europa",
+        "international",
+        "internacional",
+        "global",
+        "services",
+        "servicios",
+        "seguros",
+        "insurance",
+        "broker",
+        "correduria",
+        "reaseguros",
+        "consultores",
+        "partners",
+        "media",
+        "mediacion",
+    }
+)
+
+
+def distinctive_name_tokens(legal_or_core: str) -> list[str]:
+    """Tokens useful to confirm a page refers to this company (drop weak geographic/legal words)."""
+    core = core_name(legal_or_core) if legal_or_core else ""
+    out: list[str] = []
+    for token in core.split():
+        if len(token) < 4:
+            continue
+        if token in _WEAK_NAME_TOKENS:
+            continue
+        out.append(token)
+    return out
+
+
+def text_mentions_company(text: str | None, legal_name: str, *, min_hits: int = 1) -> bool:
+    """True when title/snippet contains distinctive tokens from the legal name."""
+    blob = normalize_text(text or "")
+    if not blob:
+        return False
+    tokens = distinctive_name_tokens(legal_name)
+    if not tokens:
+        # Fallback: whole core must appear loosely
+        core = core_name(legal_name)
+        return bool(core) and core in blob
+    hits = sum(1 for t in tokens if t in blob)
+    return hits >= min(min_hits, len(tokens))
+
+
 def is_noise_website_domain(domain: str | None) -> bool:
     if not domain:
         return True
@@ -360,14 +420,17 @@ def select_official_website(
     harvest_website: str | None,
     google_website: str | None,
     google_domain: str | None,
+    google_content_backed: bool = False,
     min_domain_similarity: float = 55.0,
 ) -> tuple[str | None, str | None, str | None, str | None]:
     """
     Choose a clean official homepage.
 
     Returns (website, domain, google_website_clean, harvest_website_clean).
-    Prefers Harvest when present and not noise; otherwise Google only if domain
-    resembles the company name and is not a directory/gazette.
+    Prefers Harvest when its domain resembles the company. Google results that
+    already passed ranking (including brand/group pages whose domain differs
+    from the legal name, e.g. Verspieren → alkora.es) are kept when
+    ``google_content_backed`` is True or domain similarity is high enough.
     """
     from rapidfuzz import fuzz
 
@@ -391,7 +454,9 @@ def select_official_website(
     google_sim = 0.0
     if google_website and google_dom and not is_noise_website_domain(google_dom):
         google_sim = _sim(google_dom)
-        if google_sim >= min_domain_similarity:
+        # Content-backed Google candidates (title/snippet mention the company) may
+        # use a commercial brand domain that does not resemble the legal name.
+        if google_content_backed or google_sim >= min_domain_similarity:
             google_clean = normalize_homepage_url(google_website)
         else:
             google_dom = None
@@ -400,7 +465,7 @@ def select_official_website(
     # just because Google had nothing useful (avoids assigning another firm's homepage).
     if harvest_clean and harvest_sim >= 40:
         return harvest_clean, harvest_dom, google_clean, harvest_clean
-    if google_clean and google_sim > harvest_sim:
+    if google_clean and (google_sim > harvest_sim or google_content_backed):
         return google_clean, google_dom, google_clean, harvest_clean
     if harvest_clean and harvest_sim >= 35:
         return harvest_clean, harvest_dom, google_clean, harvest_clean

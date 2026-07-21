@@ -227,6 +227,46 @@ def test_website_homepage_and_noise_filter() -> None:
     assert len(candidates) == 1
     assert candidates[0].domain == "espabrok.es"
     assert candidates[0].url == "https://www.espabrok.es/"
+    # Brand/group site: legal name Verspieren, commercial domain alkora.es
+    verspieren_candidates = build_website_candidates(
+        [
+            GoogleEvidence(
+                query='"Verspieren Iberica S.A." website',
+                query_type="website",
+                position=1,
+                title="Grupo Verspieren - Alkora EBS Correduría de Seguros y ...",
+                snippet=(
+                    "El Grupo Verspieren es el principal corredor de seguros con capital "
+                    "íntegramente familiar en Francia. Verspieren Ibérica forma parte del grupo."
+                ),
+                url="https://www.alkora.es/grupo-verspieren",
+                domain="alkora.es",
+            ),
+            GoogleEvidence(
+                query='"Verspieren Iberica S.A." website',
+                query_type="website",
+                position=2,
+                title="BORME anuncio",
+                snippet="VERSPIEREN IBERICA S.A.",
+                url="https://www.boe.es/diario_borme/txt.php?id=BORME-A-2026-79-28",
+                domain="boe.es",
+            ),
+        ],
+        "Verspieren Iberica S.A.",
+    )
+    assert len(verspieren_candidates) == 1
+    assert verspieren_candidates[0].domain == "alkora.es"
+    assert verspieren_candidates[0].url == "https://www.alkora.es/"
+
+    website_v, domain_v, _, _ = select_official_website(
+        legal_name="Verspieren Iberica S.A.",
+        harvest_website=None,
+        google_website="https://www.alkora.es/",
+        google_domain="alkora.es",
+        google_content_backed=True,
+    )
+    assert website_v == "https://www.alkora.es/"
+    assert domain_v == "alkora.es"
     print("OK website homepage normalize + noise/mismatch filters")
 
 

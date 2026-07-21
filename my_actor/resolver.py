@@ -200,6 +200,7 @@ def _result_from_selection(
             harvest_website=None,
             google_website=raw_google_website,
             google_domain=raw_google_domain,
+            google_content_backed=bool(website_candidates),
         )
         result = _empty_result(company, error=error, status=status)
         result.google_queries_used = google_queries_used
@@ -228,6 +229,7 @@ def _result_from_selection(
         harvest_website=str(harvest_website_raw) if harvest_website_raw else None,
         google_website=raw_google_website,
         google_domain=raw_google_domain,
+        google_content_backed=bool(website_candidates),
     )
 
     linkedin_id = None
