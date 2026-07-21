@@ -55,6 +55,7 @@ from .scoring import (
     confidence_from_status,
     name_similarity,
 )
+from .maps_fallback import run_google_maps_fallback
 from .website_probe import validate_website_candidates
 
 
@@ -120,6 +121,9 @@ def settings_from_input(raw_input: dict[str, Any], *, env_token: str | None, env
         debug=bool(raw_input.get("debug", False)),
         validate_websites=bool(raw_input.get("validate_websites", True)),
         max_website_probes=int(raw_input.get("max_website_probes") or 3),
+        fallback_google_maps=bool(raw_input.get("fallback_google_maps", True)),
+        google_maps_actor_id=raw_input.get("google_maps_actor_id") or "compass/crawler-google-places",
+        google_maps_max_places=int(raw_input.get("google_maps_max_places") or 5),
     )
 
 
@@ -329,7 +333,7 @@ async def resolve_company(
     google_queries_used: list[str] = []
     harvest_queries_used: list[str] = []
 
-    initial_queries = build_initial_queries(company.legal_name)
+    initial_queries = build_initial_queries(company.legal_name, city=company.city)
     google_queries_used.extend(initial_queries)
 
     if prefetched_evidences is None:
@@ -343,7 +347,7 @@ async def resolve_company(
             batch_size=settings.batch_size,
         )
     else:
-        evidences = evidences_for_company(prefetched_evidences, company.legal_name)
+        evidences = evidences_for_company(prefetched_evidences, company.legal_name, city=company.city)
 
     linkedin_evidences = filter_linkedin_evidences(evidences)
     website_query_evidences = [e for e in evidences if e.query_type == WEBSITE_QUERY]
@@ -357,6 +361,29 @@ async def resolve_company(
             max_probes=settings.max_website_probes,
             concurrency=min(3, settings.max_website_probes),
         )
+
+    # Last resort: Google Maps place website when Search found nothing usable.
+    if settings.fallback_google_maps and not website_candidates:
+        maps_candidates = await run_google_maps_fallback(
+            company.legal_name,
+            token=settings.apify_token,
+            actor_id=settings.google_maps_actor_id,
+            city=company.city,
+            province=company.province,
+            max_places=settings.google_maps_max_places,
+        )
+        if maps_candidates:
+            google_queries_used.append(
+                f"google_maps:{maps_candidates[0].google_evidences[0].query if maps_candidates[0].google_evidences else 'fallback'}"
+            )
+            if settings.validate_websites:
+                maps_candidates = await validate_website_candidates(
+                    company.legal_name,
+                    maps_candidates,
+                    max_probes=min(settings.max_website_probes, len(maps_candidates)),
+                    concurrency=min(3, settings.max_website_probes),
+                )
+            website_candidates = maps_candidates
 
     candidates = _dedupe_linkedin_candidates(linkedin_evidences)
     for cand in candidates:
@@ -563,7 +590,7 @@ async def resolve_companies_batch(
     # Build initial Google query batch for all companies
     query_list: list[str] = []
     for company in companies:
-        query_list.extend(build_initial_queries(company.legal_name))
+        query_list.extend(build_initial_queries(company.legal_name, city=company.city))
 
     Actor.log.info("Running initial Google Search for %s companies (%s queries).", len(companies), len(query_list))
     all_evidences = await run_google_searches(
@@ -587,6 +614,6 @@ async def resolve_companies_batch(
                 type(exc).__name__,
             )
             result = _empty_result(company, error=type(exc).__name__, status=MatchStatus.ERROR)
-            result.google_queries_used = build_initial_queries(company.legal_name)
+            result.google_queries_used = build_initial_queries(company.legal_name, city=company.city)
         results.append(result)
     return results

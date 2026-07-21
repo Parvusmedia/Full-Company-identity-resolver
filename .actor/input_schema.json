@@ -192,6 +192,29 @@
       "minimum": 0,
       "maximum": 5
     },
+    "fallback_google_maps": {
+      "title": "Google Maps fallback",
+      "description": "When Google Search finds no usable website, query Google Maps places as a last resort (costs one Maps Actor run per such company).",
+      "type": "boolean",
+      "editor": "checkbox",
+      "default": true
+    },
+    "google_maps_actor_id": {
+      "title": "Google Maps Actor ID",
+      "description": "Apify Actor used for Maps fallback. Default: compass/crawler-google-places.",
+      "type": "string",
+      "editor": "textfield",
+      "default": "compass/crawler-google-places"
+    },
+    "google_maps_max_places": {
+      "title": "Max Maps places",
+      "description": "Maximum places to crawl per Maps fallback search.",
+      "type": "integer",
+      "editor": "number",
+      "default": 5,
+      "minimum": 1,
+      "maximum": 10
+    },
     "debug": {
       "title": "Debug",
       "description": "When true, include candidates, website_candidates, ai_decision and raw_harvest in the output row.",

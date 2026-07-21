@@ -28,8 +28,18 @@ def build_linkedin_query(legal_name: str) -> str:
     return f'"{legal_name}" linkedin'
 
 
-def build_website_query(legal_name: str) -> str:
-    return f'"{legal_name}" website'
+def build_website_query(legal_name: str, city: str | None = None) -> str:
+    """Discover official websites.
+
+    Important: do **not** wrap the full legal name in quotes. Exact-phrase
+    queries bias Google toward registries (einforma, empresite, BORME) and hide
+    the real homepage (e.g. baigorri.com). A soft core-name (+ city) query
+    matches what users see in a normal Google search.
+    """
+    core = remove_legal_forms(legal_name).strip() or (legal_name or "").strip()
+    if city and city.strip():
+        return f"{core} {city.strip()}"
+    return core
 
 
 def build_core_linkedin_query(legal_name: str) -> str | None:
@@ -40,9 +50,9 @@ def build_core_linkedin_query(legal_name: str) -> str | None:
     return f'"{core}" linkedin'
 
 
-def build_initial_queries(legal_name: str) -> list[str]:
+def build_initial_queries(legal_name: str, *, city: str | None = None) -> list[str]:
     """Initial Google queries for a company (legal + optional core-name LinkedIn)."""
-    queries = [build_linkedin_query(legal_name), build_website_query(legal_name)]
+    queries = [build_linkedin_query(legal_name), build_website_query(legal_name, city=city)]
     core_q = build_core_linkedin_query(legal_name)
     if core_q:
         queries.append(core_q)
@@ -58,10 +68,11 @@ def classify_query_type(query: str) -> str:
     q = query.lower().strip()
     if q.startswith("site:linkedin.com/company"):
         return DOMAIN_FALLBACK_QUERY
-    if "website" in q:
-        return WEBSITE_QUERY
     if "linkedin" in q:
         return LINKEDIN_QUERY
+    # Soft company-name searches (no linkedin / site:) are website discovery.
+    if q:
+        return WEBSITE_QUERY
     return "other"
 
 
@@ -159,9 +170,9 @@ def filter_website_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvid
     return out
 
 
-def evidences_for_company(evidences: list[GoogleEvidence], legal_name: str) -> list[GoogleEvidence]:
+def evidences_for_company(evidences: list[GoogleEvidence], legal_name: str, *, city: str | None = None) -> list[GoogleEvidence]:
     """Select evidences belonging to a company via exact query match (no substring bleed)."""
-    allowed = {q.strip() for q in build_initial_queries(legal_name) if q and q.strip()}
+    allowed = {q.strip() for q in build_initial_queries(legal_name, city=city) if q and q.strip()}
     if not allowed:
         return []
     return [e for e in evidences if (e.query or "").strip() in allowed]

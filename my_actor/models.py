@@ -68,6 +68,9 @@ class ActorSettings(BaseModel):
     debug: bool = False
     validate_websites: bool = True
     max_website_probes: int = 3
+    fallback_google_maps: bool = True
+    google_maps_actor_id: str = "compass/crawler-google-places"
+    google_maps_max_places: int = 5
 
 
 class GoogleEvidence(BaseModel):

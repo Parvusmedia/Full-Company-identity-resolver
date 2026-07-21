@@ -317,7 +317,13 @@ def test_website_homepage_and_noise_filter() -> None:
 
 
 def test_batch_evidence_no_substring_bleed() -> None:
-    from my_actor.google_search import evidences_for_company
+    from my_actor.google_search import evidences_for_company, build_website_query
+
+    # Soft website query must NOT use exact-phrase quotes (registry bias).
+    wq = build_website_query("Correduria De Seguros Baigorri S.A", city="Zaragoza")
+    assert "Zaragoza" in wq
+    assert '"' not in wq
+    assert "website" not in wq.lower()
 
     evidences = [
         GoogleEvidence(
@@ -342,6 +348,30 @@ def test_batch_evidence_no_substring_bleed() -> None:
     assert len(only_es) == 1
     assert "MAPFRE ESPANA" in only_es[0].query
     print("OK batch evidence exact-query attribution")
+
+
+def test_maps_place_to_website_candidate() -> None:
+    from my_actor.maps_fallback import maps_items_to_website_candidates
+
+    cands = maps_items_to_website_candidates(
+        [
+            {
+                "title": "Baigorri Sabseg * Correduría de Seguros",
+                "website": "https://baigorri.com/",
+                "address": "Zaragoza",
+                "categoryName": "Corredor de seguros",
+            },
+            {
+                "title": "Otra cosa",
+                "website": "https://empresite.eleconomista.es/x",
+            },
+        ],
+        "Correduria De Seguros Baigorri S.A",
+    )
+    assert len(cands) == 1
+    assert cands[0].domain == "baigorri.com"
+    assert cands[0].url == "https://www.baigorri.com/"
+    print("OK maps place → website candidate")
 
 
 def test_parent_page_penalty_and_no_post_derivation() -> None:
@@ -441,6 +471,7 @@ def main() -> None:
     test_match_status_gap()
     test_website_homepage_and_noise_filter()
     test_batch_evidence_no_substring_bleed()
+    test_maps_place_to_website_candidate()
     test_parent_page_penalty_and_no_post_derivation()
     test_homepage_probe_rejects_global_brand_for_iberica()
     print("\nAll local checks passed.")

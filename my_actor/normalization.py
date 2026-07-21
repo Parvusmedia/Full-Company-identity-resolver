@@ -227,6 +227,12 @@ def extract_registrable_domain(url_or_domain: str | None) -> str | None:
 WEBSITE_NOISE_DOMAINS = {
     "zoominfo.com",
     "coursehero.com",
+    "instagram.com",
+    "facebook.com",
+    "twitter.com",
+    "x.com",
+    "youtube.com",
+    "tiktok.com",
     "facebook.com",
     "twitter.com",
     "x.com",
