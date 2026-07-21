@@ -648,6 +648,31 @@ async def resolve_company(
             concurrency=min(3, max(1, settings.max_website_probes)),
         )
 
+    # Prefer a brand-matching domain (egmseguros / mk2seguros) over a higher-scoring
+    # unrelated host when the brand candidate was not hard-rejected by the probe.
+    # Directory-cited sites sometimes fail fetch transiently but remain the right pick.
+    brands = distinctive_name_tokens(company.legal_name)
+    if brands and len(website_candidates) >= 2:
+        def _brand_hit(c: Any) -> bool:
+            label = domain_label(c.domain) or ""
+            return any(b in label for b in brands)
+
+        top = website_candidates[0]
+        if not _brand_hit(top):
+            for alt in website_candidates[1:]:
+                probe = alt.homepage_probe if isinstance(getattr(alt, "homepage_probe", None), dict) else {}
+                if probe.get("reject"):
+                    continue
+                if _brand_hit(alt):
+                    Actor.log.info(
+                        "Preferring brand domain %s over %s for %s",
+                        alt.domain,
+                        top.domain,
+                        core_name(company.legal_name) or company.legal_name,
+                    )
+                    website_candidates = [alt] + [c for c in website_candidates if c.domain != alt.domain]
+                    break
+
     # Never publish country-mismatched / explicitly suppressed domains.
     # Empty is better than a foreign lookalike twin (arribas.pe, *.com.co, …).
     from .match_guards import should_block_published_website
