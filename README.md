@@ -8,18 +8,15 @@ relationship and confidence with explainable evidence.
 ## Pipeline
 
 1. Parse `companies` (priority) or newline-separated `queries`
-2. Normalize legal name and strip legal forms (SA, SL, SLU, Sociedad Limitada, …)
-3. Run two batched Google searches via `apify/google-search-scraper`:
-   - `"RAZÓN SOCIAL" linkedin`
-   - `"RAZÓN SOCIAL" website`
-4. Keep query, type, position, title, snippet and URL for every result
-5. Keep only `linkedin.com/company/*`, normalize and deduplicate
-6. Reject personal profiles, jobs, school, showcase, posts, pulse
-7. Cheap pre-score → enrich top 1–3 candidates with HarvestAPI
-8. Final score combining Google + Harvest
-9. Optional third Google query by domain when confidence is low
-10. Optional OpenAI only for ambiguous cases
-11. Push **one** dataset item per input company
+2. Optionally skip rows that already have a non-noise website + confirmed/high_confidence
+3. Normalize legal name and strip legal forms (SA, SL, SLU, Sociedad Limitada, …)
+4. Batched Google Search (2 queries/company): exact LinkedIn + soft website; core LinkedIn only if no `/company/`
+5. Keep only `linkedin.com/company/*`, normalize and dedupe; score websites (about-page / AI Overview bridge)
+6. Cheap homepage probe (default top-1) + optional Maps (off by default)
+7. Pre-score → Harvest top candidates (skip #2 when pre-score gap ≥ 15)
+8. Optional domain→LinkedIn Google only when LinkedIn is weak and website is strong
+9. Optional OpenAI only for ambiguous cases
+10. Push **one** dataset item per input company
 
 ## Project layout
 

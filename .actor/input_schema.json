@@ -54,6 +54,42 @@
             "type": "string",
             "editor": "textfield",
             "default": "España"
+          },
+          "existing_website": {
+            "title": "Existing website",
+            "description": "Prior website from CRM/NocoDB. With skip_if_good_website, confirmed/high_confidence rows are not re-resolved.",
+            "type": "string",
+            "editor": "textfield"
+          },
+          "existing_domain": {
+            "title": "Existing domain",
+            "description": "Prior domain from CRM/NocoDB.",
+            "type": "string",
+            "editor": "textfield"
+          },
+          "existing_match_status": {
+            "title": "Existing match status",
+            "description": "Prior match_status (confirmed/high_confidence/…). Used with skip_if_good_website.",
+            "type": "string",
+            "editor": "textfield"
+          },
+          "existing_linkedin_url": {
+            "title": "Existing LinkedIn URL",
+            "description": "Prior LinkedIn URL preserved when the row is skipped.",
+            "type": "string",
+            "editor": "textfield"
+          },
+          "website": {
+            "title": "Website (alias)",
+            "description": "Alias for existing_website when exporting from NocoDB.",
+            "type": "string",
+            "editor": "textfield"
+          },
+          "match_status": {
+            "title": "Match status (alias)",
+            "description": "Alias for existing_match_status.",
+            "type": "string",
+            "editor": "textfield"
           }
         },
         "required": ["legal_name"]
@@ -123,7 +159,7 @@
     },
     "fallback_google_by_website": {
       "title": "Fallback Google by website",
-      "description": "If confidence is low, run a third Google query: site:linkedin.com/company \"domain.com\".",
+      "description": "If LinkedIn confidence is low/missing AND a strong website was already found, run site:linkedin.com/company \"domain\".",
       "type": "boolean",
       "editor": "checkbox",
       "default": true
@@ -185,19 +221,19 @@
     },
     "max_website_probes": {
       "title": "Max website homepage probes",
-      "description": "How many top website candidates to fetch for homepage validation.",
+      "description": "How many top website candidates to fetch for homepage validation. Default 1 is enough for most batches.",
       "type": "integer",
       "editor": "number",
-      "default": 3,
+      "default": 1,
       "minimum": 0,
       "maximum": 5
     },
     "fallback_google_maps": {
       "title": "Google Maps fallback",
-      "description": "When Google Search finds no usable website, query Google Maps places as a last resort (costs one Maps Actor run per such company).",
+      "description": "When Google Search finds no usable website, query Google Maps places as a last resort (extra Actor cost). Off by default — enable only for stubborn empty-website backfills.",
       "type": "boolean",
       "editor": "checkbox",
-      "default": true
+      "default": false
     },
     "google_maps_actor_id": {
       "title": "Google Maps Actor ID",
@@ -214,6 +250,29 @@
       "default": 5,
       "minimum": 1,
       "maximum": 10
+    },
+    "skip_if_good_website": {
+      "title": "Skip if good website exists",
+      "description": "When companies include existing_website + confirmed/high_confidence match_status and the domain is not noise, skip Google/Harvest entirely.",
+      "type": "boolean",
+      "editor": "checkbox",
+      "default": true
+    },
+    "defer_core_linkedin": {
+      "title": "Defer core-name LinkedIn query",
+      "description": "Run the second LinkedIn query (name without SA/SL) only when the exact legal-name query finds no /company/ page.",
+      "type": "boolean",
+      "editor": "checkbox",
+      "default": true
+    },
+    "harvest_pre_score_gap": {
+      "title": "Harvest pre-score gap",
+      "description": "If the top LinkedIn pre-score leads the second by at least this margin, enrich only the top candidate.",
+      "type": "number",
+      "editor": "number",
+      "default": 15,
+      "minimum": 0,
+      "maximum": 100
     },
     "debug": {
       "title": "Debug",

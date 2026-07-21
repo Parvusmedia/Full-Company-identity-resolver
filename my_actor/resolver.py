@@ -11,6 +11,8 @@ from .ai_resolver import resolve_with_ai
 from .google_search import (
     WEBSITE_QUERY,
     ai_overviews_for_company,
+    build_attribution_queries,
+    build_core_linkedin_query,
     build_domain_fallback_query,
     build_initial_queries,
     evidences_for_company,
@@ -44,6 +46,7 @@ from .normalization import (
     domain_label,
     extract_registrable_domain,
     is_noise_website_domain,
+    normalize_homepage_url,
     normalize_linkedin_company_url,
     select_official_website,
     slug_from_linkedin_url,
@@ -82,6 +85,12 @@ def parse_input_companies(raw_input: dict[str, Any]) -> list[CompanyInput]:
                         city=item.get("city"),
                         province=item.get("province"),
                         country=item.get("country") or "España",
+                        existing_website=item.get("existing_website") or item.get("website"),
+                        existing_domain=item.get("existing_domain") or item.get("domain"),
+                        existing_match_status=item.get("existing_match_status")
+                        or item.get("match_status"),
+                        existing_linkedin_url=item.get("existing_linkedin_url")
+                        or item.get("linkedin_url"),
                     )
                 )
         if companies:
@@ -114,6 +123,7 @@ def settings_from_input(raw_input: dict[str, Any], *, env_token: str | None, env
         max_harvest_candidates=int(raw_input.get("max_harvest_candidates") or 2),
         harvest_api_key=(env_harvest or raw_input.get("harvest_api_key") or None),
         harvest_concurrency=int(raw_input.get("harvest_concurrency") or 3),
+        harvest_pre_score_gap=float(raw_input.get("harvest_pre_score_gap") or 15),
         fallback_google_by_website=bool(raw_input.get("fallback_google_by_website", True)),
         fallback_confidence_threshold=int(raw_input.get("fallback_confidence_threshold") or 78),
         use_ai_for_ambiguous=bool(raw_input.get("use_ai_for_ambiguous", False)),
@@ -123,10 +133,57 @@ def settings_from_input(raw_input: dict[str, Any], *, env_token: str | None, env
         batch_size=int(raw_input.get("batch_size") or 20),
         debug=bool(raw_input.get("debug", False)),
         validate_websites=bool(raw_input.get("validate_websites", True)),
-        max_website_probes=int(raw_input.get("max_website_probes") or 3),
-        fallback_google_maps=bool(raw_input.get("fallback_google_maps", True)),
+        max_website_probes=int(
+            raw_input["max_website_probes"]
+            if raw_input.get("max_website_probes") is not None
+            else 1
+        ),
+        fallback_google_maps=bool(raw_input.get("fallback_google_maps", False)),
         google_maps_actor_id=raw_input.get("google_maps_actor_id") or "compass/crawler-google-places",
         google_maps_max_places=int(raw_input.get("google_maps_max_places") or 5),
+        skip_if_good_website=bool(raw_input.get("skip_if_good_website", True)),
+        defer_core_linkedin=bool(raw_input.get("defer_core_linkedin", True)),
+    )
+
+
+_SKIP_MATCH_STATUSES = frozenset({"confirmed", "high_confidence"})
+
+
+def _should_skip_company(company: CompanyInput, settings: ActorSettings) -> bool:
+    """Skip re-resolve when prior website is already non-noise and high-confidence."""
+    if not settings.skip_if_good_website:
+        return False
+    status = (company.existing_match_status or "").strip().lower()
+    if status not in _SKIP_MATCH_STATUSES:
+        return False
+    website = (company.existing_website or "").strip()
+    if not website:
+        return False
+    domain = company.existing_domain or extract_registrable_domain(website)
+    if not domain or is_noise_website_domain(domain):
+        return False
+    return True
+
+
+def _skipped_result(company: CompanyInput, *, debug: bool) -> ResolutionResult:
+    website = normalize_homepage_url(company.existing_website) or company.existing_website
+    domain = company.existing_domain or extract_registrable_domain(website)
+    status = (company.existing_match_status or MatchStatus.HIGH_CONFIDENCE.value).strip()
+    return ResolutionResult(
+        source_id=company.source_id,
+        legal_name=company.legal_name,
+        tax_id=company.tax_id,
+        linkedin_url=company.existing_linkedin_url,
+        website=website,
+        domain=domain,
+        google_website=website,
+        match_status=status,
+        confidence=90.0 if status == MatchStatus.CONFIRMED.value else 82.0,
+        relationship=Relationship.UNKNOWN.value,
+        enrichment_status="skipped_existing",
+        evidence_summary="Skipped: existing non-noise website with confirmed/high_confidence match.",
+        google_queries_used=[],
+        enriched_at=datetime.now(timezone.utc).isoformat(),
     )
 
 
@@ -350,10 +407,23 @@ async def resolve_company(
     prefetched_ai_overviews: list[AiOverviewEvidence] | None = None,
 ) -> ResolutionResult:
     """Resolve a single company into exactly one output row."""
+    if _should_skip_company(company, settings):
+        Actor.log.info(
+            "Skipping %s (existing website=%s status=%s)",
+            core_name(company.legal_name) or company.legal_name,
+            company.existing_website,
+            company.existing_match_status,
+        )
+        return _skipped_result(company, debug=settings.debug)
+
     google_queries_used: list[str] = []
     harvest_queries_used: list[str] = []
 
-    initial_queries = build_initial_queries(company.legal_name, city=company.city)
+    initial_queries = build_initial_queries(
+        company.legal_name,
+        city=company.city,
+        include_core_linkedin=not settings.defer_core_linkedin,
+    )
     google_queries_used.extend(initial_queries)
 
     if prefetched_evidences is None:
@@ -375,6 +445,31 @@ async def resolve_company(
         )
 
     linkedin_evidences = filter_linkedin_evidences(evidences)
+
+    # Deferred core-name LinkedIn: only when exact legal-name query found no /company/.
+    core_q = build_core_linkedin_query(company.legal_name) if settings.defer_core_linkedin else None
+    if core_q and any((e.query or "").strip() == core_q for e in evidences):
+        if core_q not in google_queries_used:
+            google_queries_used.append(core_q)
+    if settings.defer_core_linkedin and not linkedin_evidences and core_q and prefetched_evidences is None:
+        Actor.log.info(
+            "No LinkedIn /company/ from exact query; running core LinkedIn for %s",
+            core_name(company.legal_name) or company.legal_name,
+        )
+        google_queries_used.append(core_q)
+        extra_ev, extra_ai = await run_google_searches(
+            [core_q],
+            actor_id=settings.google_actor_id,
+            token=settings.apify_token,
+            country_code=settings.country_code,
+            language_code=settings.language_code,
+            results_per_page=settings.google_results_per_page,
+            batch_size=settings.batch_size,
+        )
+        evidences.extend(extra_ev)
+        ai_overviews.extend(extra_ai)
+        linkedin_evidences = filter_linkedin_evidences(evidences)
+
     website_query_evidences = [e for e in evidences if e.query_type == WEBSITE_QUERY]
     # Never fall back to LinkedIn SERP URLs as websites — that invents false domains.
     website_evidences = filter_website_evidences(website_query_evidences)
@@ -384,7 +479,7 @@ async def resolve_company(
             company.legal_name,
             website_candidates,
             max_probes=settings.max_website_probes,
-            concurrency=min(3, settings.max_website_probes),
+            concurrency=min(3, max(1, settings.max_website_probes)),
         )
 
     # Free final layer: Google AI Overview already returned with Search results.
@@ -446,6 +541,20 @@ async def resolve_company(
     candidates.sort(key=lambda c: c.pre_score, reverse=True)
     top_n = max(1, min(settings.max_harvest_candidates, 5))
     to_enrich = candidates[:top_n]
+    # Skip 2nd Harvest call when #1 clearly leads.
+    gap = settings.harvest_pre_score_gap
+    if (
+        len(to_enrich) > 1
+        and gap > 0
+        and (candidates[0].pre_score - candidates[1].pre_score) >= gap
+    ):
+        Actor.log.info(
+            "Harvest top-1 only for %s (pre_score gap %.1f >= %.1f)",
+            core_name(company.legal_name) or company.legal_name,
+            candidates[0].pre_score - candidates[1].pre_score,
+            gap,
+        )
+        to_enrich = candidates[:1]
 
     harvest_map = await enrich_candidates_with_harvest(
         [c.linkedin_url for c in to_enrich],
@@ -478,21 +587,31 @@ async def resolve_company(
     commercial_name = (selected.harvest or {}).get("name") if selected and selected.harvest else None
     ai_decision_dict: dict[str, Any] | None = None
 
-    # Optional domain fallback when confidence is low
+    # Optional domain→LinkedIn fallback: only when LinkedIn is weak/missing AND
+    # we already have a strong website signal (avoids expensive blind retries).
+    website_strong = False
+    if website_candidates:
+        top_w = website_candidates[0]
+        probe = top_w.homepage_probe if isinstance(top_w.homepage_probe, dict) else {}
+        website_strong = bool(
+            _top_website_is_content_backed(website_candidates, company.legal_name)
+            or (top_w.score or 0) >= 55
+            or probe.get("ai_overview_backed")
+            or probe.get("reject_overridden_by_about_page")
+        )
     if (
         settings.fallback_google_by_website
-        and selected is not None
         and confidence < settings.fallback_confidence_threshold
+        and website_strong
     ):
         domain = None
         if website_candidates:
             top = website_candidates[0]
-            # Only spend a fallback Google query on domains that look owned
-            # (avoid brand-mention pages poisoning LinkedIn discovery).
+            # Prefer owned-looking domains; content-backed brand portals also OK.
             label_sim = name_similarity(core_name(company.legal_name), domain_label(top.domain))
-            if label_sim >= 50:
+            if label_sim >= 50 or _top_website_is_content_backed(website_candidates, company.legal_name):
                 domain = top.domain
-        if not domain and selected.harvest:
+        if not domain and selected and selected.harvest:
             domain = extract_registrable_domain(str(selected.harvest.get("website") or ""))
         if domain and is_noise_website_domain(domain):
             domain = None
@@ -512,9 +631,10 @@ async def resolve_company(
             fallback_q = build_domain_fallback_query(domain)
             google_queries_used.append(fallback_q)
             Actor.log.info(
-                "Low confidence (%.1f); running domain fallback Google query for %s",
+                "Weak LinkedIn (%.1f) + strong website; domain fallback for %s → %s",
                 confidence,
                 core_name(company.legal_name) or company.legal_name,
+                domain,
             )
             fallback_evidences, _ = await run_google_searches(
                 [fallback_q],
@@ -551,7 +671,7 @@ async def resolve_company(
                 cand.pre_score = pre_score
                 cand.pre_score_reasons = reasons
             new_candidates.sort(key=lambda c: c.pre_score, reverse=True)
-            enrich_extra = new_candidates[: max(1, top_n)]
+            enrich_extra = new_candidates[:1]  # one Harvest call max on fallback
             if enrich_extra:
                 extra_map = await enrich_candidates_with_harvest(
                     [c.linkedin_url for c in enrich_extra],
@@ -638,12 +758,39 @@ async def resolve_companies_batch(
     if not companies:
         return []
 
-    # Build initial Google query batch for all companies
-    query_list: list[str] = []
-    for company in companies:
-        query_list.extend(build_initial_queries(company.legal_name, city=company.city))
+    results_by_index: dict[int, ResolutionResult] = {}
+    to_resolve: list[tuple[int, CompanyInput]] = []
+    for idx, company in enumerate(companies):
+        if _should_skip_company(company, settings):
+            Actor.log.info(
+                "Skipping %s (existing website=%s status=%s)",
+                core_name(company.legal_name) or company.legal_name,
+                company.existing_website,
+                company.existing_match_status,
+            )
+            results_by_index[idx] = _skipped_result(company, debug=settings.debug)
+        else:
+            to_resolve.append((idx, company))
 
-    Actor.log.info("Running initial Google Search for %s companies (%s queries).", len(companies), len(query_list))
+    if not to_resolve:
+        return [results_by_index[i] for i in range(len(companies))]
+
+    # Phase 1: LinkedIn exact + soft website (2 queries / company when deferred).
+    query_list: list[str] = []
+    for _, company in to_resolve:
+        query_list.extend(
+            build_initial_queries(
+                company.legal_name,
+                city=company.city,
+                include_core_linkedin=not settings.defer_core_linkedin,
+            )
+        )
+
+    Actor.log.info(
+        "Running initial Google Search for %s companies (%s queries).",
+        len(to_resolve),
+        len(query_list),
+    )
     all_evidences, all_ai_overviews = await run_google_searches(
         query_list,
         actor_id=settings.google_actor_id,
@@ -654,8 +801,44 @@ async def resolve_companies_batch(
         batch_size=settings.batch_size,
     )
 
-    results: list[ResolutionResult] = []
-    for company in companies:
+    # Phase 2: deferred core LinkedIn only for companies with no /company/ hit.
+    if settings.defer_core_linkedin:
+        core_queries: list[str] = []
+        for _, company in to_resolve:
+            company_ev = evidences_for_company(
+                all_evidences, company.legal_name, city=company.city
+            )
+            if filter_linkedin_evidences(company_ev):
+                continue
+            core_q = build_core_linkedin_query(company.legal_name)
+            if core_q:
+                core_queries.append(core_q)
+        if core_queries:
+            # Dedupe while preserving order
+            seen: set[str] = set()
+            unique_core: list[str] = []
+            for q in core_queries:
+                if q not in seen:
+                    seen.add(q)
+                    unique_core.append(q)
+            Actor.log.info(
+                "Deferred core LinkedIn for %s companies (%s queries).",
+                len(unique_core),
+                len(unique_core),
+            )
+            extra_ev, extra_ai = await run_google_searches(
+                unique_core,
+                actor_id=settings.google_actor_id,
+                token=settings.apify_token,
+                country_code=settings.country_code,
+                language_code=settings.language_code,
+                results_per_page=settings.google_results_per_page,
+                batch_size=settings.batch_size,
+            )
+            all_evidences.extend(extra_ev)
+            all_ai_overviews.extend(extra_ai)
+
+    for idx, company in to_resolve:
         try:
             result = await resolve_company(
                 company,
@@ -670,6 +853,9 @@ async def resolve_companies_batch(
                 type(exc).__name__,
             )
             result = _empty_result(company, error=type(exc).__name__, status=MatchStatus.ERROR)
-            result.google_queries_used = build_initial_queries(company.legal_name, city=company.city)
-        results.append(result)
-    return results
+            result.google_queries_used = build_attribution_queries(
+                company.legal_name, city=company.city
+            )
+        results_by_index[idx] = result
+
+    return [results_by_index[i] for i in range(len(companies))]

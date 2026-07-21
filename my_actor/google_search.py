@@ -55,13 +55,28 @@ def build_core_linkedin_query(legal_name: str) -> str | None:
     return f'"{core}" linkedin'
 
 
-def build_initial_queries(legal_name: str, *, city: str | None = None) -> list[str]:
-    """Initial Google queries for a company (legal + optional core-name LinkedIn)."""
+def build_initial_queries(
+    legal_name: str,
+    *,
+    city: str | None = None,
+    include_core_linkedin: bool = False,
+) -> list[str]:
+    """Cheap initial Google queries: LinkedIn (exact) + soft website discovery.
+
+    Core-name LinkedIn is deferred by default (see ``build_core_linkedin_query``)
+    until the exact query yields no ``/company/`` hits.
+    """
     queries = [build_linkedin_query(legal_name), build_website_query(legal_name, city=city)]
-    core_q = build_core_linkedin_query(legal_name)
-    if core_q:
-        queries.append(core_q)
+    if include_core_linkedin:
+        core_q = build_core_linkedin_query(legal_name)
+        if core_q:
+            queries.append(core_q)
     return queries
+
+
+def build_attribution_queries(legal_name: str, *, city: str | None = None) -> list[str]:
+    """All queries that may belong to a company (for batch evidence attribution)."""
+    return build_initial_queries(legal_name, city=city, include_core_linkedin=True)
 
 
 def build_domain_fallback_query(domain: str) -> str:
@@ -180,7 +195,7 @@ def ai_overviews_for_company(
     *,
     city: str | None = None,
 ) -> list[AiOverviewEvidence]:
-    allowed = {q.strip() for q in build_initial_queries(legal_name, city=city) if q and q.strip()}
+    allowed = {q.strip() for q in build_attribution_queries(legal_name, city=city) if q and q.strip()}
     return [a for a in ai_overviews if (a.query or "").strip() in allowed]
 
 
@@ -363,7 +378,7 @@ def filter_website_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvid
 
 def evidences_for_company(evidences: list[GoogleEvidence], legal_name: str, *, city: str | None = None) -> list[GoogleEvidence]:
     """Select evidences belonging to a company via exact query match (no substring bleed)."""
-    allowed = {q.strip() for q in build_initial_queries(legal_name, city=city) if q and q.strip()}
+    allowed = {q.strip() for q in build_attribution_queries(legal_name, city=city) if q and q.strip()}
     if not allowed:
         return []
     return [e for e in evidences if (e.query or "").strip() in allowed]

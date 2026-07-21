@@ -610,6 +610,46 @@ def test_willis_quienes_somos_about_page_scoring() -> None:
     print("OK Willis quienes-somos about-page scoring")
 
 
+def test_efficiency_defaults_and_skip() -> None:
+    from my_actor.google_search import build_attribution_queries, build_initial_queries
+    from my_actor.models import ActorSettings, CompanyInput
+    from my_actor.resolver import _should_skip_company, _skipped_result, settings_from_input
+
+    qs = build_initial_queries("Willis Iberia Correduria De Seguros Y Reaseguros, S.A.", city="Madrid")
+    assert len(qs) == 2
+    assert "linkedin" in qs[0].lower()
+    assert "Madrid" in qs[1]
+    assert all("website" not in q.lower() for q in qs)
+    attr = build_attribution_queries("Willis Iberia Correduria De Seguros Y Reaseguros, S.A.", city="Madrid")
+    assert len(attr) == 3  # + deferred core LinkedIn
+
+    settings = settings_from_input({}, env_token=None, env_harvest=None, env_openai=None)
+    assert settings.fallback_google_maps is False
+    assert settings.max_website_probes == 1
+    assert settings.skip_if_good_website is True
+    assert settings.defer_core_linkedin is True
+    assert settings.harvest_pre_score_gap == 15
+
+    good = CompanyInput(
+        legal_name="Albrok Mediacion S.A.",
+        existing_website="https://www.albroksa.com/",
+        existing_domain="albroksa.com",
+        existing_match_status="confirmed",
+        existing_linkedin_url="https://www.linkedin.com/company/albrok/",
+    )
+    assert _should_skip_company(good, settings) is True
+    skipped = _skipped_result(good, debug=False)
+    assert skipped.website == "https://www.albroksa.com/"
+    assert skipped.enrichment_status == "skipped_existing"
+    assert skipped.google_queries_used == []
+
+    partial = good.model_copy(update={"existing_match_status": "partial"})
+    assert _should_skip_company(partial, settings) is False
+    noise = good.model_copy(update={"existing_website": "https://www.infoempresa.com/x", "existing_domain": "infoempresa.com"})
+    assert _should_skip_company(noise, settings) is False
+    print("OK efficiency defaults + skip-if-good-website")
+
+
 def main() -> None:
     test_json_files()
     test_parse_queries()
@@ -626,6 +666,7 @@ def main() -> None:
     test_homepage_probe_rejects_global_brand_for_iberica()
     test_ai_overview_website_fallback()
     test_willis_quienes_somos_about_page_scoring()
+    test_efficiency_defaults_and_skip()
     print("\nAll local checks passed.")
 
 

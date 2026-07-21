@@ -37,6 +37,11 @@ class CompanyInput(BaseModel):
     city: str | None = None
     province: str | None = None
     country: str | None = "España"
+    # Optional prior enrichment (from NocoDB) — used to skip already-good rows.
+    existing_website: str | None = None
+    existing_domain: str | None = None
+    existing_match_status: str | None = None
+    existing_linkedin_url: str | None = None
 
     @field_validator("legal_name")
     @classmethod
@@ -58,6 +63,7 @@ class ActorSettings(BaseModel):
     max_harvest_candidates: int = 2
     harvest_api_key: str | None = None
     harvest_concurrency: int = 3
+    harvest_pre_score_gap: float = 15.0
     fallback_google_by_website: bool = True
     fallback_confidence_threshold: int = 78
     use_ai_for_ambiguous: bool = False
@@ -67,10 +73,12 @@ class ActorSettings(BaseModel):
     batch_size: int = 20
     debug: bool = False
     validate_websites: bool = True
-    max_website_probes: int = 3
-    fallback_google_maps: bool = True
+    max_website_probes: int = 1
+    fallback_google_maps: bool = False
     google_maps_actor_id: str = "compass/crawler-google-places"
     google_maps_max_places: int = 5
+    skip_if_good_website: bool = True
+    defer_core_linkedin: bool = True
 
 
 class GoogleEvidence(BaseModel):
