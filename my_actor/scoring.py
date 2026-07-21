@@ -13,10 +13,13 @@ from .normalization import (
     domain_label,
     extract_registrable_domain,
     is_noise_website_domain,
+    looks_like_parent_or_group_name,
     normalize_homepage_url,
     normalize_text,
     slug_from_linkedin_url,
     text_mentions_company,
+    token_coverage,
+    website_path_looks_editorial,
 )
 
 
@@ -57,6 +60,12 @@ def compute_pre_score(
     slug_sim = name_similarity(core, slug.replace("-", " "))
     score += slug_sim * 0.35
     reasons.append(f"slug_similarity={slug_sim:.1f}")
+    slug_cov = token_coverage(company.legal_name, slug.replace("-", " "))
+    score += slug_cov * 10.0
+    reasons.append(f"slug_token_coverage={slug_cov:.2f}")
+    if looks_like_parent_or_group_name(company.legal_name, slug.replace("-", " ")):
+        score -= 12.0
+        reasons.append("slug_looks_like_parent")
 
     best_title_sim = 0.0
     best_position_bonus = 0.0
@@ -149,6 +158,58 @@ def _looks_like_geographic_branch(name: str | None, universal: str | None, core:
         "delegación",
         "sucursal",
         "oficina",
+        # Common CCAA / provinces that appear on branch pages
+        "galicia",
+        "asturias",
+        "cantabria",
+        "navarra",
+        "euskadi",
+        "catalunya",
+        "cataluna",
+        "andalucia",
+        "extremadura",
+        "murcia",
+        "aragón",
+        "aragon",
+        "castilla",
+        "leon",
+        "mancha",
+        "baleares",
+        "canarias",
+        "pontevedra",
+        "coruna",
+        "a",
+        "ourense",
+        "lugo",
+        "girona",
+        "tarragona",
+        "lleida",
+        "cadiz",
+        "huelva",
+        "jaen",
+        "almeria",
+        "toledo",
+        "ciudad",
+        "real",
+        "guadalajara",
+        "cuenca",
+        "albacete",
+        "salamanca",
+        "burgos",
+        "leon",
+        "zamora",
+        "palencia",
+        "segovia",
+        "soria",
+        "avila",
+        "huesca",
+        "teruel",
+        "castellon",
+        "alava",
+        "guipuzcoa",
+        "vizcaya",
+        "bizkaia",
+        "gipuzkoa",
     }
     return any(normalize_text(t) in place_hints for t in extra)
 
@@ -181,10 +242,20 @@ def compute_final_score(
 
     if harvest_name:
         name_sim = name_similarity(core, str(harvest_name))
+        coverage = token_coverage(company.legal_name, str(harvest_name))
         score += name_sim * 0.20
+        score += coverage * 8.0
         reasons.append(f"harvest_name_similarity={name_sim:.1f}")
-        if name_sim >= 90:
+        reasons.append(f"harvest_token_coverage={coverage:.2f}")
+        parentish = looks_like_parent_or_group_name(company.legal_name, str(harvest_name))
+        if parentish:
+            score -= 14.0
+            reasons.append("possible_parent_or_group_page")
+            relationship = Relationship.PARENT_COMPANY
+        elif name_sim >= 90 and coverage >= 0.85:
             relationship = Relationship.SAME_ENTITY
+        elif name_sim >= 90:
+            relationship = Relationship.COMMERCIAL_BRAND
         elif name_sim >= 70:
             relationship = Relationship.COMMERCIAL_BRAND
         elif name_sim < 45:
@@ -192,9 +263,20 @@ def compute_final_score(
 
     if universal:
         uni_sim = name_similarity(core, str(universal).replace("-", " "))
+        uni_cov = token_coverage(company.legal_name, str(universal).replace("-", " "))
         score += uni_sim * 0.20
+        score += uni_cov * 6.0
         reasons.append(f"universal_name_similarity={uni_sim:.1f}")
-        if uni_sim >= 90 and relationship in {Relationship.UNKNOWN, Relationship.REQUIRES_REVIEW, Relationship.COMMERCIAL_BRAND}:
+        if looks_like_parent_or_group_name(company.legal_name, str(universal).replace("-", " ")):
+            score -= 10.0
+            reasons.append("universal_looks_like_parent")
+            if relationship not in {Relationship.BRANCH, Relationship.SUBSIDIARY}:
+                relationship = Relationship.PARENT_COMPANY
+        elif uni_sim >= 90 and relationship in {
+            Relationship.UNKNOWN,
+            Relationship.REQUIRES_REVIEW,
+            Relationship.COMMERCIAL_BRAND,
+        }:
             relationship = Relationship.COMMERCIAL_BRAND
 
     google_domain = None
@@ -227,8 +309,12 @@ def compute_final_score(
         else:
             score -= 15.0
             reasons.append("domain_conflict")
+            # Popular parent pages often conflict on domain; dampen size signals later.
             if relationship == Relationship.SAME_ENTITY:
                 relationship = Relationship.REQUIRES_REVIEW
+            if employee_count or followers:
+                score -= 4.0
+                reasons.append("domain_conflict_size_dampen")
     elif harvest_domain and not google_domain:
         score += 4.0
         reasons.append("harvest_website_present")
@@ -347,6 +433,8 @@ def confidence_from_status(score: float, status: MatchStatus) -> float:
 
 def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -> list[WebsiteCandidate]:
     by_domain: dict[str, WebsiteCandidate] = {}
+    # Keep original URLs for editorial-path checks before homepage collapse.
+    originals: dict[str, list[str]] = {}
     core = core_name(legal_name)
     for ev in evidences:
         domain = extract_registrable_domain(ev.url)
@@ -356,8 +444,10 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
         if existing is None:
             existing = WebsiteCandidate(url=ev.url, domain=domain, google_evidences=[ev], score=0.0)
             by_domain[domain] = existing
+            originals[domain] = [ev.url]
         else:
             existing.google_evidences.append(ev)
+            originals[domain].append(ev.url)
 
     candidates = list(by_domain.values())
     kept: list[WebsiteCandidate] = []
@@ -365,20 +455,35 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
         label = domain_label(cand.domain)
         domain_sim = name_similarity(core, label)
         best_title_sim = 0.0
-        content_backed = False
-        for ev in cand.google_evidences:
+        title_backed = False
+        snippet_only_backed = False
+        editorial_only = True
+        for ev, original_url in zip(cand.google_evidences, originals.get(cand.domain, [])):
             title_sim = name_similarity(core, ev.title or "")
             snippet_sim = name_similarity(core, (ev.snippet or "")[:240])
-            best_title_sim = max(best_title_sim, title_sim, snippet_sim)
-            if text_mentions_company(
-                f"{ev.title or ''} {ev.snippet or ''}",
-                legal_name,
-            ):
-                content_backed = True
-        # Accept domain-similar sites, or brand/group sites where Google title/snippet
-        # clearly refer to the company (e.g. Verspieren Iberica → alkora.es).
-        if domain_sim < 50 and not (content_backed and best_title_sim >= 55):
+            best_title_sim = max(best_title_sim, title_sim)
+            title_hit = text_mentions_company(ev.title or "", legal_name)
+            snippet_hit = text_mentions_company(ev.snippet or "", legal_name)
+            if title_hit:
+                title_backed = True
+            elif snippet_hit:
+                snippet_only_backed = True
+            if not website_path_looks_editorial(original_url):
+                editorial_only = False
+
+        # Reject pure editorial/deep-link hits unless the domain itself looks owned.
+        if editorial_only and domain_sim < 50:
             continue
+
+        # Content-backed brand domains require a title mention (not snippet-only),
+        # to avoid competitor/news pages that merely name the firm in the blurb.
+        content_backed = title_backed and best_title_sim >= 55
+        if domain_sim < 50 and not content_backed:
+            continue
+        # Snippet-only mentions never rescue a dissimilar domain.
+        if domain_sim < 50 and snippet_only_backed and not title_backed:
+            continue
+
         score = domain_sim * 0.55
         if content_backed and domain_sim < 50:
             score += best_title_sim * 0.45
@@ -388,7 +493,6 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
             score += name_similarity(core, ev.title or "") * 0.15
             if ev.query_type == "website":
                 score += 8.0
-            # Prefer earlier organic positions for content-backed brand domains
             if content_backed and ev.position is not None and ev.position <= 3:
                 score += 6.0
         cand.score = score

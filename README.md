@@ -152,11 +152,15 @@ discovered by Google. Response `element` fields are mapped into the output row.
 
 ## Notes
 
-- Official websites are stripped to homepage (`https://www.telefonica.es/`, never
-  `/es/nosotros/`). Directories and gazettes (`infoempresa.com`, `boe.es`,
-  `empresite.eleconomista.es`, `northdata.com`, news articles, etc.) are rejected.
-  Google website candidates must resemble the company name; Harvest websites with
-  a mismatched domain are not kept as the official site.
+- Official websites are stripped to the registrable homepage (`https://www.telefonica.es/`,
+  never `/es/nosotros/`; city subdomains collapse to apex). Directories, gazettes and
+  media (`infoempresa.com`, `boe.es`, `elespanol.com`, …) are rejected. Google brand/group
+  domains are kept only when the **title** mentions the company (Verspieren → `alkora.es`).
+- Batch Google evidence is attributed by **exact query**, not substring, to avoid
+  cross-company bleed (`MAPFRE S.A.` vs `MAPFRE ESPANA S.A.`).
+- Parent/global LinkedIn pages (e.g. Marsh for Marsh Iberica) are penalized vs local
+  entity pages. `/posts/` URLs are not turned into fake `/company/` pages.
+- These quality gates are deterministic and add **no** extra Google or Harvest calls.
 - Cache via named Key-Value Store is intentionally **not** included in this first
   build (priority: correct build → correct run → correct results).
 - No dataset schema is published yet, to keep the Actor definition minimal and valid.

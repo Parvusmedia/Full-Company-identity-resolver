@@ -164,25 +164,13 @@ def _linkedin_host_ok(host: str) -> bool:
 
 
 def company_url_from_linkedin_post(url: str) -> str | None:
-    """Derive /company/<slug>/ from a LinkedIn post authored by a company page."""
-    if not url:
-        return None
-    try:
-        parsed = urlparse(unquote(url.strip()) if "://" in url else f"https://{unquote(url.strip())}")
-    except Exception:
-        return None
-    if not _linkedin_host_ok(parsed.netloc):
-        return None
-    parts = [p for p in parsed.path.split("/") if p]
-    if len(parts) < 2 or parts[0].lower() != "posts":
-        return None
-    # posts/<company-or-person-slug>_activity-...
-    raw_slug = parts[1]
-    slug = raw_slug.split("_", 1)[0].strip()
-    if not slug or len(slug) < 2:
-        return None
-    # Person posts often look similar; keep slug and let scoring/Harvest decide.
-    return urlunparse(("https", "www.linkedin.com", f"/company/{slug}/", "", "", ""))
+    """Derive /company/<slug>/ from a LinkedIn post URL.
+
+    Disabled by default for identity resolution: person posts use the same
+    ``/posts/<slug>_activity-...`` shape and would invent fake company pages.
+    Callers that already verified the slug as a company may use this helper.
+    """
+    return None
 
 
 def normalize_linkedin_company_url(url: str) -> str | None:
@@ -190,11 +178,7 @@ def normalize_linkedin_company_url(url: str) -> str | None:
     if not url:
         return None
     raw = unquote(url.strip())
-    # Allow deriving a company URL from a company-authored post.
-    if "/posts/" in raw.lower():
-        derived = company_url_from_linkedin_post(raw)
-        if derived:
-            return derived
+    # Do not invent company pages from /posts/ (person posts look identical).
     if should_reject_linkedin_url(raw):
         return None
     parsed = urlparse(raw if "://" in raw else f"https://{raw}")
@@ -216,18 +200,23 @@ def extract_registrable_domain(url_or_domain: str | None) -> str | None:
     value = url_or_domain.strip()
     if not value:
         return None
-    if "://" not in value and "/" not in value and " " not in value:
-        host = value.lower().removeprefix("www.")
-        return host or None
     try:
         import tldextract
 
-        parsed = urlparse(value if "://" in value else f"https://{value}")
-        extracted = tldextract.extract(parsed.netloc or parsed.path)
-        if not extracted.domain or not extracted.suffix:
-            host = (parsed.netloc or "").lower().removeprefix("www.")
-            return host or None
-        return f"{extracted.domain}.{extracted.suffix}".lower()
+        if "://" in value:
+            parsed = urlparse(value)
+            host = parsed.netloc or parsed.path
+        else:
+            host = value.split("/")[0]
+        host = (host or "").lower().removeprefix("www.").split("@")[-1]
+        if ":" in host:
+            name, _, port = host.rpartition(":")
+            if port.isdigit():
+                host = name
+        extracted = tldextract.extract(host)
+        if extracted.domain and extracted.suffix:
+            return f"{extracted.domain}.{extracted.suffix}".lower()
+        return host or None
     except Exception:
         parsed = urlparse(value if "://" in value else f"https://{value}")
         host = (parsed.netloc or "").lower().removeprefix("www.")
@@ -289,6 +278,34 @@ WEBSITE_NOISE_DOMAINS = {
     "realmadrid.com",
     "muysegura.com",
     "linkedin.com",
+    "elespanol.com",
+    "elconfidencial.com",
+    "larazon.es",
+    "abc.es",
+    "elmundo.es",
+    "elpais.com",
+    "cincodias.elpais.com",
+    "expansion.com",
+    "europapress.es",
+    "20minutos.es",
+    "lavanguardia.com",
+    "eldiario.es",
+    "okdiario.com",
+    "vozpopuli.com",
+    "negocios.com",
+    "invertia.com",
+    "bolsamania.com",
+    "estrategiasdeinversion.com",
+    "media-marketing.es",
+    "adnkronos.com",
+    "reuters.com",
+    "bloomberg.com",
+    "ft.com",
+    "wsj.com",
+    "forbes.com",
+    "businessinsider.com",
+    "medium.com",
+    "substack.com",
 }
 
 _WEAK_PATH_MARKERS = (
@@ -350,6 +367,57 @@ _WEAK_NAME_TOKENS = frozenset(
     }
 )
 
+# Geographic / market qualifiers that distinguish a local legal entity from the parent brand.
+_ENTITY_QUALIFIER_TOKENS = frozenset(
+    {
+        "iberica",
+        "iberia",
+        "espana",
+        "spain",
+        "portugal",
+        "italia",
+        "italy",
+        "france",
+        "francia",
+        "deutschland",
+        "germany",
+        "uk",
+        "usa",
+        "mexico",
+        "brasil",
+        "brazil",
+        "latam",
+        "europe",
+        "europa",
+        "international",
+        "internacional",
+        "global",
+    }
+)
+
+_QUALIFIER_ALIASES = {
+    "iberica": "iberia",
+    "iberia": "iberia",
+    "espana": "spain",
+    "spain": "spain",
+    "francia": "france",
+    "france": "france",
+    "italia": "italy",
+    "italy": "italy",
+    "deutschland": "germany",
+    "germany": "germany",
+    "brasil": "brazil",
+    "brazil": "brazil",
+    "europa": "europe",
+    "europe": "europe",
+    "internacional": "international",
+    "international": "international",
+}
+
+
+def _normalize_qualifier_set(tokens: set[str]) -> set[str]:
+    return {_QUALIFIER_ALIASES.get(t, t) for t in tokens}
+
 
 def distinctive_name_tokens(legal_or_core: str) -> list[str]:
     """Tokens useful to confirm a page refers to this company (drop weak geographic/legal words)."""
@@ -364,7 +432,7 @@ def distinctive_name_tokens(legal_or_core: str) -> list[str]:
     return out
 
 
-def text_mentions_company(text: str | None, legal_name: str, *, min_hits: int = 1) -> bool:
+def text_mentions_company(text: str | None, legal_name: str, *, min_hits: int | None = None) -> bool:
     """True when title/snippet contains distinctive tokens from the legal name."""
     blob = normalize_text(text or "")
     if not blob:
@@ -374,8 +442,53 @@ def text_mentions_company(text: str | None, legal_name: str, *, min_hits: int = 
         # Fallback: whole core must appear loosely
         core = core_name(legal_name)
         return bool(core) and core in blob
+    required = min_hits if min_hits is not None else (2 if len(tokens) >= 2 else 1)
     hits = sum(1 for t in tokens if t in blob)
-    return hits >= min(min_hits, len(tokens))
+    return hits >= min(required, len(tokens))
+
+
+def token_coverage(reference: str, candidate: str) -> float:
+    """Fraction of distinctive reference tokens present in candidate text."""
+    tokens = distinctive_name_tokens(reference)
+    if not tokens:
+        return 0.0
+    blob = normalize_text(candidate or "")
+    if not blob:
+        return 0.0
+    hits = sum(1 for t in tokens if t in blob)
+    return hits / len(tokens)
+
+
+def looks_like_parent_or_group_name(legal_name: str, page_name: str | None) -> bool:
+    """
+    True when the LinkedIn/page name is a short token subset of the legal name
+    (e.g. legal 'Marsh Iberica' vs page 'Marsh' / 'Marsh McLennan').
+    """
+    if not page_name:
+        return False
+    legal_norm = core_name(legal_name)
+    page_norm = normalize_text(page_name)
+    if not legal_norm or not page_norm:
+        return False
+    legal_tokens = set(legal_norm.split())
+    page_tokens = set(page_norm.split()) - _WEAK_NAME_TOKENS
+    # Qualifiers present in the legal name but missing on the page
+    legal_qualifiers = _normalize_qualifier_set(legal_tokens & _ENTITY_QUALIFIER_TOKENS)
+    page_qualifiers = _normalize_qualifier_set(set(page_norm.split()) & _ENTITY_QUALIFIER_TOKENS)
+    missing_qualifiers = legal_qualifiers - page_qualifiers
+    brand_tokens = distinctive_name_tokens(legal_name)
+    if not brand_tokens:
+        return False
+    page_has_brand = any(t in page_norm for t in brand_tokens)
+    if not page_has_brand:
+        return False
+    # Parent/global page: brand matches but local market qualifier is absent
+    if missing_qualifiers and len(page_tokens) <= len(brand_tokens) + 2:
+        return True
+    # Page name is much shorter and only covers brand tokens
+    if missing_qualifiers and len(page_norm.split()) < len(legal_norm.split()):
+        return True
+    return False
 
 
 def is_noise_website_domain(domain: str | None) -> bool:
@@ -388,7 +501,11 @@ def is_noise_website_domain(domain: str | None) -> bool:
 
 
 def normalize_homepage_url(url: str | None) -> str | None:
-    """Return scheme+host homepage only (no path/query/fragment)."""
+    """Return scheme+host homepage only (no path/query/fragment).
+
+    Collapses city/marketing subdomains to the registrable apex
+    (``vigo.albroksa.com`` → ``https://www.albroksa.com/``).
+    """
     if not url:
         return None
     raw = url.strip()
@@ -398,10 +515,18 @@ def normalize_homepage_url(url: str | None) -> str | None:
     host = (parsed.netloc or "").lower()
     if not host:
         return None
-    # Drop credentials/ports noise except keep non-default ports rarely needed
     host = host.split("@")[-1]
-    scheme = "https"
-    return urlunparse((scheme, host, "/", "", "", ""))
+    # Drop non-default ports from homepage canonical form
+    if ":" in host:
+        name, _, port = host.rpartition(":")
+        if port.isdigit() and port not in {"80", "443"}:
+            pass  # keep rare non-default ports
+        else:
+            host = name or host
+    apex = extract_registrable_domain(host) or host.removeprefix("www.")
+    if not apex:
+        return None
+    return urlunparse(("https", f"www.{apex}", "/", "", "", ""))
 
 
 def website_path_looks_editorial(url: str | None) -> bool:
@@ -463,9 +588,17 @@ def select_official_website(
 
     # Prefer Harvest when domain resembles the company; never keep a mismatched Harvest site
     # just because Google had nothing useful (avoids assigning another firm's homepage).
-    if harvest_clean and harvest_sim >= 40:
+    def _rank(sim: float, domain: str | None) -> float:
+        # Slight preference for Spanish ccTLD when resolving Spanish legal entities.
+        bonus = 6.0 if domain and domain.endswith(".es") else 0.0
+        return sim + bonus
+
+    harvest_rank = _rank(harvest_sim, harvest_dom) if harvest_clean else -1.0
+    google_rank = _rank(google_sim, google_dom) if google_clean else -1.0
+
+    if harvest_clean and harvest_sim >= 40 and harvest_rank >= google_rank:
         return harvest_clean, harvest_dom, google_clean, harvest_clean
-    if google_clean and (google_sim > harvest_sim or google_content_backed):
+    if google_clean and (google_rank > harvest_rank or (google_content_backed and harvest_sim < 40)):
         return google_clean, google_dom, google_clean, harvest_clean
     if harvest_clean and harvest_sim >= 35:
         return harvest_clean, harvest_dom, google_clean, harvest_clean

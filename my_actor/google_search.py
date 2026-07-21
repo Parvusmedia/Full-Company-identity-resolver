@@ -13,7 +13,6 @@ from .normalization import (
     extract_registrable_domain,
     is_linkedin_company_url,
     is_noise_website_domain,
-    normalize_homepage_url,
     normalize_linkedin_company_url,
     remove_legal_forms,
 )
@@ -154,25 +153,18 @@ def filter_website_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvid
         path = urlparse(ev.url).path.lower()
         if path.endswith(".pdf"):
             continue
-        homepage = normalize_homepage_url(ev.url) or ev.url
-        out.append(ev.model_copy(update={"url": homepage, "domain": domain}))
+        # Keep original URL so path editorial checks still work in scoring;
+        # homepage normalization happens when building/selecting candidates.
+        out.append(ev.model_copy(update={"domain": domain}))
     return out
 
 
 def evidences_for_company(evidences: list[GoogleEvidence], legal_name: str) -> list[GoogleEvidence]:
-    """Select evidences belonging to a company by legal/core name in the query text."""
-    legal = (legal_name or "").strip()
-    core = remove_legal_forms(legal).strip()
-    out: list[GoogleEvidence] = []
-    for ev in evidences:
-        q = ev.query or ""
-        if legal and legal in q:
-            out.append(ev)
-            continue
-        if core and core in q:
-            out.append(ev)
-            continue
-    return out
+    """Select evidences belonging to a company via exact query match (no substring bleed)."""
+    allowed = {q.strip() for q in build_initial_queries(legal_name) if q and q.strip()}
+    if not allowed:
+        return []
+    return [e for e in evidences if (e.query or "").strip() in allowed]
 
 
 def evidences_for_query(evidences: list[GoogleEvidence], query: str) -> list[GoogleEvidence]:

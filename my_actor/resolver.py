@@ -38,11 +38,13 @@ from .models import (
 )
 from .normalization import (
     core_name,
+    domain_label,
     extract_registrable_domain,
     is_noise_website_domain,
     normalize_linkedin_company_url,
     select_official_website,
     slug_from_linkedin_url,
+    text_mentions_company,
 )
 from .scoring import (
     build_website_candidates,
@@ -51,6 +53,7 @@ from .scoring import (
     compute_final_score,
     compute_pre_score,
     confidence_from_status,
+    name_similarity,
 )
 
 
@@ -175,6 +178,13 @@ def _build_evidence_summary(
     return " | ".join(parts)
 
 
+def _top_website_is_content_backed(website_candidates: list[Any], legal_name: str) -> bool:
+    if not website_candidates:
+        return False
+    top = website_candidates[0]
+    return any(text_mentions_company(ev.title or "", legal_name) for ev in top.google_evidences)
+
+
 def _result_from_selection(
     company: CompanyInput,
     selected: LinkedInCandidate | None,
@@ -193,6 +203,7 @@ def _result_from_selection(
 ) -> ResolutionResult:
     raw_google_website = website_candidates[0].url if website_candidates else None
     raw_google_domain = website_candidates[0].domain if website_candidates else None
+    content_backed = _top_website_is_content_backed(website_candidates, company.legal_name)
 
     if selected is None:
         website, domain, google_website, _harvest_clean = select_official_website(
@@ -200,7 +211,7 @@ def _result_from_selection(
             harvest_website=None,
             google_website=raw_google_website,
             google_domain=raw_google_domain,
-            google_content_backed=bool(website_candidates),
+            google_content_backed=content_backed,
         )
         result = _empty_result(company, error=error, status=status)
         result.google_queries_used = google_queries_used
@@ -229,7 +240,7 @@ def _result_from_selection(
         harvest_website=str(harvest_website_raw) if harvest_website_raw else None,
         google_website=raw_google_website,
         google_domain=raw_google_domain,
-        google_content_backed=bool(website_candidates),
+        google_content_backed=content_backed,
     )
 
     linkedin_id = None
@@ -332,9 +343,9 @@ async def resolve_company(
         evidences = evidences_for_company(prefetched_evidences, company.legal_name)
 
     linkedin_evidences = filter_linkedin_evidences(evidences)
-    website_evidences = filter_website_evidences(
-        [e for e in evidences if e.query_type == WEBSITE_QUERY] or evidences
-    )
+    website_query_evidences = [e for e in evidences if e.query_type == WEBSITE_QUERY]
+    # Never fall back to LinkedIn SERP URLs as websites — that invents false domains.
+    website_evidences = filter_website_evidences(website_query_evidences)
     website_candidates = build_website_candidates(website_evidences, company.legal_name)
 
     candidates = _dedupe_linkedin_candidates(linkedin_evidences)
@@ -387,20 +398,27 @@ async def resolve_company(
     ):
         domain = None
         if website_candidates:
-            domain = website_candidates[0].domain
+            top = website_candidates[0]
+            # Only spend a fallback Google query on domains that look owned
+            # (avoid brand-mention pages poisoning LinkedIn discovery).
+            label_sim = name_similarity(core_name(company.legal_name), domain_label(top.domain))
+            if label_sim >= 50:
+                domain = top.domain
         if not domain and selected.harvest:
             domain = extract_registrable_domain(str(selected.harvest.get("website") or ""))
         if domain and is_noise_website_domain(domain):
             domain = None
         if not domain:
-            domains = [
-                d
-                for d in extract_domains_from_text(
-                    *[e.snippet for e in evidences],
-                    *[e.title for e in evidences],
-                )
-                if not is_noise_website_domain(d)
-            ]
+            domains = []
+            for d in extract_domains_from_text(
+                *[e.snippet for e in evidences],
+                *[e.title for e in evidences],
+            ):
+                if is_noise_website_domain(d):
+                    continue
+                if name_similarity(core_name(company.legal_name), domain_label(d)) < 50:
+                    continue
+                domains.append(d)
             domain = domains[0] if domains else None
         if domain:
             fallback_q = build_domain_fallback_query(domain)

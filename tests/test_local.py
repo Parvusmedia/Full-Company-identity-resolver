@@ -145,11 +145,13 @@ def test_match_status_gap() -> None:
 
 def test_website_homepage_and_noise_filter() -> None:
     assert normalize_homepage_url("https://www.telefonica.es/es/nosotros/") == "https://www.telefonica.es/"
-    assert normalize_homepage_url("http://espabrok.es/contacto/") == "https://espabrok.es/"
+    assert normalize_homepage_url("http://espabrok.es/contacto/") == "https://www.espabrok.es/"
+    assert normalize_homepage_url("https://vigo.albroksa.com/contacto/") == "https://www.albroksa.com/"
     assert is_noise_website_domain("infoempresa.com")
     assert is_noise_website_domain("empresite.eleconomista.es")
     assert is_noise_website_domain("boe.es")
     assert is_noise_website_domain("muysegura.com")
+    assert is_noise_website_domain("elespanol.com")
     assert not is_noise_website_domain("telefonica.es")
     assert not is_noise_website_domain("espabrok.es")
 
@@ -181,8 +183,8 @@ def test_website_homepage_and_noise_filter() -> None:
     ]
     filtered = filter_website_evidences(evidences)
     assert len(filtered) == 1
-    assert filtered[0].url == "https://www.telefonica.es/"
     assert filtered[0].domain == "telefonica.es"
+    assert normalize_homepage_url(filtered[0].url) == "https://www.telefonica.es/"
 
     website, domain, _, _ = select_official_website(
         legal_name="Telefonica De Espana, S.A.U.",
@@ -267,7 +269,102 @@ def test_website_homepage_and_noise_filter() -> None:
     )
     assert website_v == "https://www.alkora.es/"
     assert domain_v == "alkora.es"
+
+    # Snippet-only competitor mention must not become the official website
+    competitor = build_website_candidates(
+        [
+            GoogleEvidence(
+                query='"Excess Corredores" website',
+                query_type="website",
+                position=1,
+                title="Marsh Iberia amplia capacidades",
+                snippet="Excess Corredores compite en el mercado de reaseguros con Marsh.",
+                url="https://www.marsh.com/es/es/home.html",
+                domain="marsh.com",
+            )
+        ],
+        "Excess Corredores De Reaseguros Y Consultores, S.A.",
+    )
+    assert competitor == []
     print("OK website homepage normalize + noise/mismatch filters")
+
+
+def test_batch_evidence_no_substring_bleed() -> None:
+    from my_actor.google_search import evidences_for_company
+
+    evidences = [
+        GoogleEvidence(
+            query='"MAPFRE ESPANA S.A." linkedin',
+            query_type="linkedin",
+            position=1,
+            title="MAPFRE España",
+            url="https://www.linkedin.com/company/mapfre-espana/",
+        ),
+        GoogleEvidence(
+            query='"MAPFRE S.A." linkedin',
+            query_type="linkedin",
+            position=1,
+            title="MAPFRE",
+            url="https://www.linkedin.com/company/mapfre/",
+        ),
+    ]
+    only_parent = evidences_for_company(evidences, "MAPFRE S.A.")
+    assert len(only_parent) == 1
+    assert "MAPFRE S.A." in only_parent[0].query
+    only_es = evidences_for_company(evidences, "MAPFRE ESPANA S.A.")
+    assert len(only_es) == 1
+    assert "MAPFRE ESPANA" in only_es[0].query
+    print("OK batch evidence exact-query attribution")
+
+
+def test_parent_page_penalty_and_no_post_derivation() -> None:
+    from my_actor.normalization import looks_like_parent_or_group_name
+    from my_actor.scoring import compute_final_score
+    from my_actor.models import Relationship
+
+    assert looks_like_parent_or_group_name("Marsh Iberica S.A.", "Marsh")
+    assert looks_like_parent_or_group_name("Marsh Iberica S.A.", "Marsh McLennan")
+    assert not looks_like_parent_or_group_name("Marsh Iberica S.A.", "Marsh Iberica")
+    assert normalize_linkedin_company_url(
+        "https://www.linkedin.com/posts/john-doe_activity-123"
+    ) is None
+
+    company = CompanyInput(legal_name="Marsh Iberica S.A.")
+    parent = LinkedInCandidate(
+        linkedin_url="https://www.linkedin.com/company/marsh/",
+        universal_name_guess="marsh",
+        harvest={
+            "name": "Marsh",
+            "universalName": "marsh",
+            "website": "https://www.marsh.com",
+            "employeeCount": 50000,
+            "followerCount": 1000000,
+            "active": True,
+            "pageVerified": True,
+        },
+    )
+    local = LinkedInCandidate(
+        linkedin_url="https://www.linkedin.com/company/marsh-iberia/",
+        universal_name_guess="marsh-iberia",
+        harvest={
+            "name": "Marsh Iberia",
+            "universalName": "marsh-iberia",
+            "website": "https://www.marsh.com/es",
+            "employeeCount": 800,
+            "followerCount": 5000,
+            "active": True,
+            "pageVerified": True,
+        },
+    )
+    parent.pre_score = 70
+    local.pre_score = 70
+    parent_score, parent_reasons, parent_rel = compute_final_score(company, parent, [])
+    local_score, local_reasons, local_rel = compute_final_score(company, local, [])
+    assert any("parent" in r for r in parent_reasons)
+    assert parent_rel == Relationship.PARENT_COMPANY
+    assert local_score > parent_score
+    assert local_rel in {Relationship.SAME_ENTITY, Relationship.COMMERCIAL_BRAND}
+    print("OK parent-page penalty + no post→company derivation")
 
 
 def main() -> None:
@@ -280,6 +377,8 @@ def main() -> None:
     test_duplicate_urls_single_candidate_scoring()
     test_match_status_gap()
     test_website_homepage_and_noise_filter()
+    test_batch_evidence_no_substring_bleed()
+    test_parent_page_penalty_and_no_post_derivation()
     print("\nAll local checks passed.")
 
 
