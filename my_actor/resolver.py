@@ -326,8 +326,36 @@ def _result_from_selection(
         google_content_backed=content_backed,
     )
 
+    # Google .es (or other) overrode a foreign Harvest twin — detach that LinkedIn page.
+    harvest_dom = extract_registrable_domain(str(harvest_website_raw) if harvest_website_raw else None)
+    linkedin_detached = bool(domain and harvest_dom and domain != harvest_dom and website == google_website)
+    website_linkedin = None
+    if linkedin_detached and website_candidates:
+        probe = website_candidates[0].homepage_probe if isinstance(website_candidates[0].homepage_probe, dict) else {}
+        raw_lis = probe.get("linkedin_urls") if probe else None
+        if isinstance(raw_lis, list):
+            for u in raw_lis:
+                website_linkedin = normalize_linkedin_company_url(str(u))
+                if website_linkedin:
+                    break
+        if not website_linkedin:
+            # Discovery often runs as a LinkedInCandidate (website_linkedin) without
+            # copying URLs back onto homepage_probe — reuse that candidate.
+            for cand in all_candidates:
+                reasons = cand.pre_score_reasons or []
+                if "linkedin_found_on_official_website" in reasons or any(
+                    (ev.query_type or "") == "website_linkedin" for ev in (cand.google_evidences or [])
+                ):
+                    website_linkedin = normalize_linkedin_company_url(cand.linkedin_url)
+                    if website_linkedin:
+                        break
+        if not website_linkedin and selected and any(
+            (ev.query_type or "") == "website_linkedin" for ev in (selected.google_evidences or [])
+        ):
+            website_linkedin = normalize_linkedin_company_url(selected.linkedin_url)
+
     linkedin_id = None
-    if element.get("id") is not None:
+    if not linkedin_detached and element.get("id") is not None:
         linkedin_id = str(element.get("id"))
 
     employee_count = element.get("employeeCount")
@@ -346,51 +374,79 @@ def _result_from_selection(
     if selected.harvest_error and not selected.harvest:
         enrichment_status = "harvest_failed_google_kept"
 
+    out_linkedin = selected.linkedin_url
+    out_commercial = commercial_name or (element.get("name") if element else None)
+    out_status = status
+    out_confidence = confidence
+    out_relationship = relationship
+    if linkedin_detached:
+        out_linkedin = website_linkedin
+        out_commercial = None
+        linkedin_id = None
+        employee_count_int = None
+        followers_int = None
+        enrichment_status = "partial" if website else "google_only"
+        if website and not website_linkedin:
+            out_status = MatchStatus.PARTIAL
+            out_confidence = 0.0
+            out_relationship = Relationship.UNKNOWN
+        elif website and website_linkedin:
+            out_status = MatchStatus.HIGH_CONFIDENCE if status.value in {"confirmed", "high_confidence"} else status
+            out_confidence = min(float(confidence), 82.0)
+            out_relationship = Relationship.SAME_ENTITY
+        if "website_linkedin_override" not in google_queries_used and website_linkedin:
+            google_queries_used = list(google_queries_used) + [f"website_linkedin:{domain}"]
+
     result = ResolutionResult(
         source_id=company.source_id,
         legal_name=company.legal_name,
         tax_id=company.tax_id,
-        commercial_name=commercial_name or (element.get("name") if element else None),
-        linkedin_url=selected.linkedin_url,
+        commercial_name=out_commercial if not linkedin_detached else out_commercial,
+        linkedin_url=out_linkedin,
         linkedin_id=linkedin_id,
-        universal_name=element.get("universalName") if element else selected.universal_name_guess,
-        linkedin_name=element.get("name") if element else None,
+        universal_name=(None if linkedin_detached else (element.get("universalName") if element else selected.universal_name_guess)),
+        linkedin_name=(None if linkedin_detached else (element.get("name") if element else None)),
         website=website,
         domain=domain,
         google_website=google_website,
         harvest_website=harvest_website,
-        description=element.get("description") if element else None,
-        tagline=element.get("tagline") if element else None,
-        industry=industry,
-        industries=industries,
-        specialties=(element.get("specialities") or element.get("specialties")) if element else None,
+        description=None if linkedin_detached else (element.get("description") if element else None),
+        tagline=None if linkedin_detached else (element.get("tagline") if element else None),
+        industry=None if linkedin_detached else industry,
+        industries=None if linkedin_detached else industries,
+        specialties=None if linkedin_detached else ((element.get("specialities") or element.get("specialties")) if element else None),
         employee_count=employee_count_int,
-        employee_range=emp_range,
-        employee_range_start=emp_start,
-        employee_range_end=emp_end,
+        employee_range=None if linkedin_detached else emp_range,
+        employee_range_start=None if linkedin_detached else emp_start,
+        employee_range_end=None if linkedin_detached else emp_end,
         followers=followers_int,
-        founded_year=harvest_founded_year(element if element else None),
-        headquarters=hq_fields["headquarters"],
-        headquarters_text=hq_fields["headquarters_text"],
-        headquarters_city=hq_fields["headquarters_city"],
-        headquarters_region=hq_fields["headquarters_region"],
-        headquarters_country=hq_fields["headquarters_country"],
-        locations=element.get("locations") if element else None,
-        phone=harvest_phone(element if element else None),
-        logo=harvest_logo_url(element if element else None),
-        active=element.get("active") if element else None,
-        page_verified=element.get("pageVerified") if element else None,
-        relationship=relationship.value,
-        match_status=status.value,
-        confidence=confidence,
-        evidence_summary=_build_evidence_summary(selected, domain, status),
+        founded_year=None if linkedin_detached else harvest_founded_year(element if element else None),
+        headquarters=None if linkedin_detached else hq_fields["headquarters"],
+        headquarters_text=None if linkedin_detached else hq_fields["headquarters_text"],
+        headquarters_city=None if linkedin_detached else hq_fields["headquarters_city"],
+        headquarters_region=None if linkedin_detached else hq_fields["headquarters_region"],
+        headquarters_country=None if linkedin_detached else hq_fields["headquarters_country"],
+        locations=None if linkedin_detached else (element.get("locations") if element else None),
+        phone=None if linkedin_detached else harvest_phone(element if element else None),
+        logo=None if linkedin_detached else harvest_logo_url(element if element else None),
+        active=None if linkedin_detached else (element.get("active") if element else None),
+        page_verified=None if linkedin_detached else (element.get("pageVerified") if element else None),
+        relationship=out_relationship.value,
+        match_status=out_status.value,
+        confidence=out_confidence,
+        evidence_summary=(
+            f"Google website {domain} preferred over foreign Harvest twin; "
+            f"LinkedIn={'from website' if website_linkedin else 'cleared'}."
+            if linkedin_detached
+            else _build_evidence_summary(selected, domain, out_status)
+        ),
         candidates_found=len(all_candidates),
         candidates_enriched=sum(1 for c in all_candidates if c.harvest),
         google_queries_used=google_queries_used,
         harvest_queries_used=harvest_queries_used,
         enrichment_status=enrichment_status,
         enriched_at=datetime.now(timezone.utc).isoformat(),
-        error=error or selected.harvest_error,
+        error=error or (None if linkedin_detached else selected.harvest_error),
     )
     if debug:
         result.candidates = [candidate_debug_dict(c, debug=True) for c in all_candidates]
@@ -778,6 +834,37 @@ async def resolve_company(
                 # Blend AI confidence lightly with deterministic score
                 confidence = round((selected.final_score * 0.6) + (ai_decision.confidence * 0.4), 2)
             status = classify_match_status(confidence, None, has_candidates=True)
+
+    # When Google .es will beat a foreign Harvest twin, ensure homepage LinkedIn
+    # is available on the winning website probe (discovery is skipped if Google
+    # already returned some /company/ hit — often the wrong-country twin).
+    if selected and website_candidates:
+        top_w = website_candidates[0]
+        h_raw = (selected.harvest or {}).get("website") if selected.harvest else None
+        h_dom = extract_registrable_domain(str(h_raw) if h_raw else None)
+        g_dom = top_w.domain
+        if (
+            g_dom
+            and g_dom.endswith(".es")
+            and h_dom
+            and not str(h_dom).endswith(".es")
+            and _top_website_is_content_backed(website_candidates, company.legal_name)
+        ):
+            probe = top_w.homepage_probe if isinstance(top_w.homepage_probe, dict) else {}
+            lis = [str(u) for u in (probe.get("linkedin_urls") or []) if u]
+            if not lis:
+                Actor.log.info(
+                    "Foreign Harvest twin (%s); scraping LinkedIn from Google website %s",
+                    h_dom,
+                    top_w.url,
+                )
+                lis = await discover_linkedin_from_website(top_w.url)
+            if lis:
+                top_w.homepage_probe = {
+                    **probe,
+                    "linkedin_urls": lis,
+                    "ok": probe.get("ok", True),
+                }
 
     return _result_from_selection(
         company,

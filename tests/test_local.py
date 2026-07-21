@@ -667,6 +667,53 @@ def test_extract_linkedin_from_homepage_html() -> None:
     print("OK LinkedIn extraction from homepage HTML")
 
 
+def test_generic_name_prefers_matching_google_domain() -> None:
+    """Insurance Manager, S.L. must not promote BlueCross portals over insurance-manager.es."""
+    from my_actor.google_search import build_website_query
+
+    legal = "Insurance Manager, S.L."
+    wq = build_website_query(legal)
+    assert "S.L" in wq or "S.L." in wq
+    assert '"' not in wq
+
+    evidences = [
+        GoogleEvidence(
+            query=wq,
+            query_type="website",
+            position=1,
+            title="Insurance Manager: Tus seguros al mejor precio",
+            snippet="Tu correduría de seguros online",
+            url="https://www.insurance-manager.es/",
+            domain="insurance-manager.es",
+        ),
+        GoogleEvidence(
+            query=wq,
+            query_type="website",
+            position=3,
+            title="Insurance Manager",
+            snippet="Provider portal BlueCross BlueShield of South Carolina",
+            url="https://provider.bcbssc.com/",
+            domain="bcbssc.com",
+        ),
+    ]
+    cands = build_website_candidates(evidences, legal)
+    assert cands, "expected insurance-manager.es candidate"
+    assert cands[0].domain == "insurance-manager.es"
+    assert all(c.domain != "bcbssc.com" for c in cands)
+
+    website, domain, _, harvest = select_official_website(
+        legal_name=legal,
+        harvest_website="http://www.theinsurancemanager.co.uk",
+        google_website="https://www.insurance-manager.es/",
+        google_domain="insurance-manager.es",
+        google_content_backed=True,
+    )
+    assert domain == "insurance-manager.es"
+    assert website == "https://www.insurance-manager.es/"
+    assert harvest == "https://www.theinsurancemanager.co.uk/"
+    print("OK generic-name website: Google #1 domain wins, bcbssc rejected, .es beats UK Harvest")
+
+
 def main() -> None:
     test_json_files()
     test_parse_queries()
@@ -685,6 +732,7 @@ def main() -> None:
     test_willis_quienes_somos_about_page_scoring()
     test_efficiency_defaults_and_skip()
     test_extract_linkedin_from_homepage_html()
+    test_generic_name_prefers_matching_google_domain()
     print("\nAll local checks passed.")
 
 

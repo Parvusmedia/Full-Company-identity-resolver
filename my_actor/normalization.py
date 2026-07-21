@@ -47,6 +47,16 @@ _LEGAL_FORM_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Detect Spanish sociedad forms even mid/end (S.L., S.A.U., SL, …).
+_SPANISH_LEGAL_FORM_HINT_RE = re.compile(
+    r"\b(?:s\.?\s*l\.?\s*[upl]?\.?|s\.?\s*a\.?\s*[ul]?\.?|slu|slp|sll|sau|sal|sl|sa)\b",
+    re.IGNORECASE,
+)
+
+
+def has_spanish_legal_form(legal_name: str) -> bool:
+    return bool(_SPANISH_LEGAL_FORM_HINT_RE.search(legal_name or ""))
+
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9\s]+")
 _MULTI_SPACE_RE = re.compile(r"\s+")
 _LINKEDIN_COMPANY_RE = re.compile(
@@ -776,7 +786,9 @@ def select_official_website(
 
     core = core_name(legal_name)
     legal_tokens = set(core.split())
-    wants_local_es = bool(_normalize_qualifier_set(legal_tokens & _ENTITY_QUALIFIER_TOKENS))
+    wants_local_es = bool(_normalize_qualifier_set(legal_tokens & _ENTITY_QUALIFIER_TOKENS)) or has_spanish_legal_form(
+        legal_name
+    )
 
     def _sim(domain: str | None) -> float:
         label = domain_label(domain)
@@ -810,7 +822,8 @@ def select_official_website(
 
     # 1) Harvest is authoritative when it looks even loosely related to the company.
     if harvest_clean and harvest_sim >= 25:
-        # Rare override: local .es brand page clearly beats a foreign parent Harvest site.
+        # Local .es brand page clearly beats a foreign Harvest site
+        # (Insurance Manager S.L. → insurance-manager.es vs UK .co.uk twin).
         if (
             google_clean
             and google_content_backed
@@ -819,7 +832,7 @@ def select_official_website(
             and google_dom.endswith(".es")
             and harvest_dom
             and not harvest_dom.endswith(".es")
-            and google_rank >= harvest_rank + 15
+            and (google_rank >= harvest_rank + 8 or google_sim >= 70)
         ):
             return google_clean, google_dom, google_clean, harvest_clean
         return harvest_clean, harvest_dom, google_clean, harvest_clean

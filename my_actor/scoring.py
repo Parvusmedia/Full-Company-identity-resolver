@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlparse
 
 from rapidfuzz import fuzz
 
@@ -524,7 +525,27 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
         content_backed = (
             (title_backed and best_title_sim >= 55 and not directory_listing) or about_backed
         )
+        # Title can say "Insurance Manager" on an unrelated portal (bcbssc.com).
+        # Low domain similarity may only be rescued when the domain label itself
+        # carries brand tokens, or the hit is an about-page self-ID.
+        label_words = (label or "").replace("-", " ").replace("_", " ")
+        # Title can say "Insurance Manager" on an unrelated portal (bcbssc.com).
+        # Low domain similarity may only be rescued when the domain/path itself
+        # carries brand tokens, or the hit is an about-page self-ID.
+        path_blob = " ".join(
+            (urlparse(u).path or "").replace("-", " ").replace("_", " ").replace("/", " ")
+            for u in originals.get(cand.domain, [])
+        )
+        brand_haystack = f"{label_words} {path_blob}".strip()
+        domain_brand_cov = token_coverage(legal_name, brand_haystack)
+        domain_looks_owned = (
+            domain_sim >= 70
+            or domain_brand_cov >= 0.5
+            or name_similarity(core, label_words) >= 70
+        )
         if domain_sim < 50 and not content_backed:
+            continue
+        if domain_sim < 50 and content_backed and not about_backed and not domain_looks_owned:
             continue
         # Snippet-only mentions never rescue a dissimilar domain (unless about_backed).
         if domain_sim < 50 and snippet_only_backed and not title_backed and not about_backed:
@@ -535,6 +556,8 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
             score += best_title_sim * 0.45
             if about_backed:
                 score += 20.0
+            if domain_looks_owned:
+                score += 8.0
         for ev in cand.google_evidences:
             bonus, _ = position_bonus(ev.position)
             score += bonus * 0.5

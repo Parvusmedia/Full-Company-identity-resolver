@@ -11,6 +11,8 @@ from apify import Actor
 from .models import AiOverviewEvidence, GoogleEvidence, WebsiteCandidate
 from .normalization import (
     core_name,
+    distinctive_name_tokens,
+    domain_label,
     extract_registrable_domain,
     is_linkedin_company_url,
     is_noise_website_domain,
@@ -19,6 +21,7 @@ from .normalization import (
     normalize_text,
     remove_legal_forms,
     text_mentions_company,
+    token_coverage,
 )
 from .scoring import name_similarity
 
@@ -40,11 +43,21 @@ def build_website_query(legal_name: str, city: str | None = None) -> str:
     queries bias Google toward registries (einforma, empresite, BORME) and hide
     the real homepage (e.g. baigorri.com). A soft core-name (+ city) query
     matches what users see in a normal Google search.
+
+    Exception: when the core name is generic (few distinctive tokens, e.g.
+    "Insurance Manager"), stripping legal forms makes Google match unrelated
+    global products (provider portals). Keep the soft full legal name then.
     """
-    core = remove_legal_forms(legal_name).strip() or (legal_name or "").strip()
+    raw = re.sub(r"\s+", " ", (legal_name or "").strip())
+    core = remove_legal_forms(raw).strip() or raw
+    # Generic English/brand cores: keep S.L. / legal form so SERP stays local.
+    if len(distinctive_name_tokens(raw)) < 2:
+        base = raw
+    else:
+        base = core
     if city and city.strip():
-        return f"{core} {city.strip()}"
-    return core
+        return f"{base} {city.strip()}"
+    return base
 
 
 def build_core_linkedin_query(legal_name: str) -> str | None:
@@ -283,14 +296,16 @@ def website_candidate_from_ai_overview(
         title_hit = text_mentions_company(ev.title or "", legal_name)
         snippet_hit = text_mentions_company(ev.snippet or "", legal_name)
         brand_hit = _ai_brand_matches_domain(ai_blob, domain)
-        if (
-            brand_hit
-            or domain in source_domains
-            or domain in ai_blob
-            or host.replace(".", "") in ai_blob.replace(" ", "").replace(".", "")
-            or title_hit
-            or snippet_hit
-        ):
+        label = (domain_label(domain) or "").replace("-", " ").replace("_", " ")
+        domain_owned = (
+            name_similarity(core_name(legal_name), label) >= 55
+            or token_coverage(legal_name, label) >= 0.5
+        )
+        if brand_hit or domain in source_domains or domain in ai_blob or host.replace(".", "") in ai_blob.replace(" ", "").replace(".", ""):
+            preferred.append(ev)
+            break
+        # Title/snippet mentions only count when the host looks brand-owned.
+        if (title_hit or snippet_hit) and domain_owned:
             preferred.append(ev)
             break
 
@@ -317,9 +332,29 @@ def website_candidate_from_ai_overview(
             break
 
     # 2) AI named the firm (+ often the parent brand) but cited no URL —
-    # take top non-noise organic (cheaper than Maps).
+    # take top non-noise organic whose domain looks brand-owned (cheaper than Maps).
+    # Never promote a generic title hit on an unrelated host (bcbssc "Insurance Manager").
     if not preferred and ranked_organic:
-        preferred.append(ranked_organic[0])
+        core = core_name(legal_name)
+        for ev in ranked_organic:
+            domain = ev.domain or extract_registrable_domain(ev.url) or ""
+            label = (domain_label(domain) or "").replace("-", " ").replace("_", " ")
+            dom_sim = name_similarity(core, label)
+            brand_cov = token_coverage(legal_name, label)
+            title_hit = text_mentions_company(ev.title or "", legal_name)
+            if dom_sim >= 55 or brand_cov >= 0.5 or (
+                title_hit and name_similarity(core, (domain_label(domain) or "").replace("-", " ")) >= 70
+            ):
+                preferred.append(ev)
+                break
+        if not preferred:
+            # Last soft pick: organic #1 only when title clearly matches AND domain
+            # shares at least one distinctive token.
+            top = ranked_organic[0]
+            domain = top.domain or extract_registrable_domain(top.url) or ""
+            label = (domain_label(domain) or "").replace("-", " ")
+            if text_mentions_company(top.title or "", legal_name) and token_coverage(legal_name, label) >= 0.5:
+                preferred.append(top)
 
     if not preferred:
         return None
