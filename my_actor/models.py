@@ -83,6 +83,12 @@ class GoogleEvidence(BaseModel):
     domain: str | None = None
 
 
+class AiOverviewEvidence(BaseModel):
+    query: str
+    content: str
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class LinkedInCandidate(BaseModel):
     linkedin_url: str
     universal_name_guess: str | None = None

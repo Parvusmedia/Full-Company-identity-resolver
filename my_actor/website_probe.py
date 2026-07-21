@@ -249,7 +249,10 @@ async def validate_website_candidates(
     for cand, probe in pairs:
         reasons = list(probe.reasons or [])
         new_score = cand.score + probe.score_delta
+        prior_probe = cand.homepage_probe if isinstance(cand.homepage_probe, dict) else {}
+        ai_backed = bool(prior_probe.get("ai_overview_backed"))
         probe_dump = {
+            **prior_probe,
             "ok": probe.ok,
             "final_url": probe.final_url,
             "title": probe.title,
@@ -264,13 +267,22 @@ async def validate_website_candidates(
                 "homepage_probe": probe_dump,
             }
         )
-        if probe.reject:
+        # AI Overview already corroborated the company↔URL link; do not discard
+        # solely because the homepage lacks brand tokens (e.g. WTW Spain portal).
+        if probe.reject and not ai_backed:
             Actor.log.info(
                 "Rejecting website %s after homepage probe (%s)",
                 cand.url,
                 "; ".join(reasons[:4]),
             )
             continue
+        if probe.reject and ai_backed:
+            Actor.log.info(
+                "Keeping AI Overview-backed website %s despite probe reject (%s)",
+                cand.url,
+                "; ".join(reasons[:4]),
+            )
+            probe_dump["reject_overridden_by_ai_overview"] = True
         kept.append(updated)
 
     # Append non-probed tail unchanged (lower ranked)

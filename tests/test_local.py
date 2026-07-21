@@ -473,6 +473,77 @@ def test_homepage_probe_rejects_global_brand_for_iberica() -> None:
     print("OK homepage probe rejects global WTW for Willis Iberia")
 
 
+def test_ai_overview_website_fallback() -> None:
+    from my_actor.google_search import (
+        parse_ai_overview,
+        parse_google_dataset_items,
+        website_candidate_from_ai_overview,
+    )
+    from my_actor.models import AiOverviewEvidence
+    from my_actor.scoring import build_website_candidates
+
+    legal = "Willis Iberia Correduria De Seguros Y Reaseguros, S.A."
+    query = "Willis Iberia Correduria De Seguros Y Reaseguros"
+    organic = GoogleEvidence(
+        query=query,
+        query_type="website",
+        position=1,
+        title="Quienes Somos - Seguros - WTW",
+        snippet="WILLIS IBERIA, CORREDURÍA DE SEGUROS Y REASEGUROS, S.A.",
+        url="https://servicios-seguros.wtwco.com/Admin/Public/p/quienes-somos",
+        domain="wtwco.com",
+    )
+    # Organic scoring alone rejects dissimilar brand domain without title hit.
+    assert build_website_candidates([organic], legal) == []
+
+    ai = AiOverviewEvidence(
+        query=query,
+        content=(
+            "Willis Iberia Correduria De Seguros Y Reaseguros, S.A. es una de las "
+            "principales corredurías de España y forma parte de WTW. "
+            "Sede en Paseo de la Castellana 36-38, Madrid. Más info en wtwco.com."
+        ),
+        sources=[{"url": "https://servicios-seguros.wtwco.com/Admin/Public/p/quienes-somos"}],
+    )
+    cand = website_candidate_from_ai_overview(legal, [ai], [organic])
+    assert cand is not None
+    assert cand.url == "https://servicios-seguros.wtwco.com/"
+    assert cand.homepage_probe and cand.homepage_probe.get("ai_overview_backed") is True
+
+    # Unrelated AI overview must not invent a website
+    assert (
+        website_candidate_from_ai_overview(
+            legal,
+            [AiOverviewEvidence(query=query, content="Otra empresa distinta sin relación.")],
+            [organic],
+        )
+        is None
+    )
+
+    items = [
+        {
+            "searchQuery": {"term": query},
+            "aiOverview": {
+                "content": "Willis Iberia es parte de WTW (wtwco.com).",
+                "sources": [{"url": "https://servicios-seguros.wtwco.com/"}],
+            },
+            "organicResults": [
+                {
+                    "url": "https://servicios-seguros.wtwco.com/",
+                    "title": "Seguros - WTW",
+                    "description": "Willis",
+                    "position": 1,
+                }
+            ],
+        }
+    ]
+    evidences, overviews = parse_google_dataset_items(items)
+    assert len(evidences) == 1
+    assert len(overviews) == 1
+    assert parse_ai_overview(items[0], query) is not None
+    print("OK AI Overview website fallback for Willis Iberia")
+
+
 def main() -> None:
     test_json_files()
     test_parse_queries()
@@ -487,6 +558,7 @@ def main() -> None:
     test_maps_place_to_website_candidate()
     test_parent_page_penalty_and_no_post_derivation()
     test_homepage_probe_rejects_global_brand_for_iberica()
+    test_ai_overview_website_fallback()
     print("\nAll local checks passed.")
 
 

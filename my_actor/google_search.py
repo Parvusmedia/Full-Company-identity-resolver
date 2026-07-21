@@ -8,14 +8,19 @@ from urllib.parse import urlparse
 
 from apify import Actor
 
-from .models import GoogleEvidence
+from .models import AiOverviewEvidence, GoogleEvidence, WebsiteCandidate
 from .normalization import (
+    core_name,
     extract_registrable_domain,
     is_linkedin_company_url,
     is_noise_website_domain,
+    normalize_homepage_url,
     normalize_linkedin_company_url,
+    normalize_text,
     remove_legal_forms,
+    text_mentions_company,
 )
+from .scoring import name_similarity
 
 
 LINKEDIN_QUERY = "linkedin"
@@ -100,11 +105,41 @@ def _query_term(item: dict[str, Any]) -> str:
     return str(item.get("query") or item.get("term") or "")
 
 
-def parse_google_dataset_items(items: list[dict[str, Any]]) -> list[GoogleEvidence]:
+AI_OVERVIEW_QUERY = "ai_overview"
+
+
+def parse_ai_overview(item: dict[str, Any], query: str) -> AiOverviewEvidence | None:
+    raw = item.get("aiOverview") or item.get("ai_overview") or item.get("generativeAiOverview")
+    if not isinstance(raw, dict):
+        return None
+    content = raw.get("content") or raw.get("text") or raw.get("markdown") or ""
+    if isinstance(content, list):
+        content = " ".join(str(x) for x in content if x)
+    content = str(content or "").strip()
+    if not content:
+        return None
+    sources_raw = raw.get("sources") or raw.get("citations") or []
+    sources: list[dict[str, Any]] = []
+    if isinstance(sources_raw, list):
+        for src in sources_raw:
+            if isinstance(src, dict):
+                sources.append(src)
+            elif isinstance(src, str) and src.strip():
+                sources.append({"url": src.strip()})
+    return AiOverviewEvidence(query=query, content=content, sources=sources)
+
+
+def parse_google_dataset_items(
+    items: list[dict[str, Any]],
+) -> tuple[list[GoogleEvidence], list[AiOverviewEvidence]]:
     evidences: list[GoogleEvidence] = []
+    ai_overviews: list[AiOverviewEvidence] = []
     for item in items:
         query = _query_term(item)
         query_type = classify_query_type(query)
+        ai = parse_ai_overview(item, query)
+        if ai:
+            ai_overviews.append(ai)
         for result in _organic_results(item):
             url = (
                 result.get("url")
@@ -136,7 +171,132 @@ def parse_google_dataset_items(items: list[dict[str, Any]]) -> list[GoogleEviden
                     domain=extract_registrable_domain(str(url)),
                 )
             )
-    return evidences
+    return evidences, ai_overviews
+
+
+def ai_overviews_for_company(
+    ai_overviews: list[AiOverviewEvidence],
+    legal_name: str,
+    *,
+    city: str | None = None,
+) -> list[AiOverviewEvidence]:
+    allowed = {q.strip() for q in build_initial_queries(legal_name, city=city) if q and q.strip()}
+    return [a for a in ai_overviews if (a.query or "").strip() in allowed]
+
+
+def ai_overview_mentions_company(content: str | None, legal_name: str) -> bool:
+    """True when AI overview text clearly refers to this legal entity."""
+    if not content:
+        return False
+    if text_mentions_company(content, legal_name):
+        return True
+    # Also accept near-exact legal name presence (with legal forms).
+    blob = normalize_text(content)
+    legal = normalize_text(legal_name)
+    core = normalize_text(remove_legal_forms(legal_name))
+    return bool(legal and legal in blob) or bool(core and core in blob)
+
+
+def website_candidate_from_ai_overview(
+    legal_name: str,
+    ai_overviews: list[AiOverviewEvidence],
+    organic_website_evidences: list[GoogleEvidence],
+) -> WebsiteCandidate | None:
+    """
+    Final free layer when organic scoring yields nothing.
+
+    Uses Google AI Overview text (already returned by the Search Actor) plus
+    its source URLs / top organic hits. Accepts a non-noise URL only when the
+    overview clearly mentions the company (e.g. Willis Iberia →
+    servicios-seguros.wtwco.com).
+    """
+    supporting = [a for a in ai_overviews if ai_overview_mentions_company(a.content, legal_name)]
+    if not supporting:
+        return None
+
+    ai_blob = normalize_text(" ".join(a.content for a in supporting))
+    source_urls: list[str] = []
+    for overview in supporting:
+        for src in overview.sources:
+            url = src.get("url") or src.get("link")
+            if isinstance(url, str) and url.strip():
+                source_urls.append(url.strip())
+        for domain in extract_domains_from_text(overview.content):
+            source_urls.append(f"https://{domain}/")
+
+    source_domains = {
+        d
+        for u in source_urls
+        if (d := extract_registrable_domain(u)) and not is_noise_website_domain(d)
+    }
+
+    def _usable(ev: GoogleEvidence) -> bool:
+        domain = ev.domain or extract_registrable_domain(ev.url)
+        if not domain or is_noise_website_domain(domain):
+            return False
+        host = (urlparse(ev.url).netloc or "").lower()
+        return "linkedin.com" not in host
+
+    # Prefer organic hits whose domain is cited by AI or appears in the overview text.
+    ranked_organic = sorted(
+        [e for e in organic_website_evidences if _usable(e)],
+        key=lambda e: e.position or 99,
+    )
+    preferred: list[GoogleEvidence] = []
+    for ev in ranked_organic:
+        domain = ev.domain or extract_registrable_domain(ev.url) or ""
+        host = (urlparse(ev.url).netloc or "").lower().removeprefix("www.")
+        title_hit = text_mentions_company(ev.title or "", legal_name)
+        if (
+            domain in source_domains
+            or domain in ai_blob
+            or host.replace(".", "") in ai_blob.replace(" ", "").replace(".", "")
+            or title_hit
+        ):
+            preferred.append(ev)
+            break
+    # Do not blindly take unrelated #1 organic just because AI named the firm.
+
+    if not preferred:
+        seen_domains: set[str] = set()
+        for url in source_urls:
+            domain = extract_registrable_domain(url)
+            if not domain or domain in seen_domains or is_noise_website_domain(domain):
+                continue
+            if "linkedin.com" in domain:
+                continue
+            seen_domains.add(domain)
+            preferred.append(
+                GoogleEvidence(
+                    query=supporting[0].query,
+                    query_type=AI_OVERVIEW_QUERY,
+                    position=1,
+                    title="Google AI Overview source",
+                    snippet=supporting[0].content[:400],
+                    url=url,
+                    domain=domain,
+                )
+            )
+            break
+
+    if not preferred:
+        return None
+
+    best = preferred[0]
+    homepage = normalize_homepage_url(best.url) or best.url
+    domain = best.domain or extract_registrable_domain(homepage)
+    core = core_name(legal_name)
+    score = 62.0 + name_similarity(core, best.title or "") * 0.1
+    return WebsiteCandidate(
+        url=homepage,
+        domain=domain,
+        score=score,
+        google_evidences=[best],
+        homepage_probe={
+            "ai_overview_backed": True,
+            "ai_excerpt": supporting[0].content[:280],
+        },
+    )
 
 
 def filter_linkedin_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvidence]:
@@ -192,8 +352,8 @@ async def run_google_searches(
     language_code: str = "es",
     results_per_page: int = 10,
     batch_size: int = 20,
-) -> list[GoogleEvidence]:
-    """Execute Google Search Actor in batches and return parsed evidences."""
+) -> tuple[list[GoogleEvidence], list[AiOverviewEvidence]]:
+    """Execute Google Search Actor in batches; return organic + AI Overview evidence."""
     unique_queries = []
     seen = set()
     for q in queries:
@@ -204,11 +364,11 @@ async def run_google_searches(
         unique_queries.append(qn)
 
     if not unique_queries:
-        return []
+        return [], []
 
     if not token:
         Actor.log.warning("No APIFY_TOKEN available; Google Search cannot run.")
-        return []
+        return [], []
 
     all_items: list[dict[str, Any]] = []
 
@@ -216,7 +376,7 @@ async def run_google_searches(
         from apify_client import ApifyClientAsync
     except ImportError:
         Actor.log.error("apify_client is not available; cannot run Google Search Actor.")
-        return []
+        return [], []
 
     client = ApifyClientAsync(token)
 

@@ -10,6 +10,7 @@ from apify import Actor
 from .ai_resolver import resolve_with_ai
 from .google_search import (
     WEBSITE_QUERY,
+    ai_overviews_for_company,
     build_domain_fallback_query,
     build_initial_queries,
     evidences_for_company,
@@ -17,6 +18,7 @@ from .google_search import (
     filter_linkedin_evidences,
     filter_website_evidences,
     run_google_searches,
+    website_candidate_from_ai_overview,
 )
 from .harvest import (
     enrich_candidates_with_harvest,
@@ -29,6 +31,7 @@ from .harvest import (
 )
 from .models import (
     ActorSettings,
+    AiOverviewEvidence,
     CompanyInput,
     GoogleEvidence,
     LinkedInCandidate,
@@ -328,6 +331,7 @@ async def resolve_company(
     settings: ActorSettings,
     *,
     prefetched_evidences: list[GoogleEvidence] | None = None,
+    prefetched_ai_overviews: list[AiOverviewEvidence] | None = None,
 ) -> ResolutionResult:
     """Resolve a single company into exactly one output row."""
     google_queries_used: list[str] = []
@@ -337,7 +341,7 @@ async def resolve_company(
     google_queries_used.extend(initial_queries)
 
     if prefetched_evidences is None:
-        evidences = await run_google_searches(
+        evidences, ai_overviews = await run_google_searches(
             initial_queries,
             actor_id=settings.google_actor_id,
             token=settings.apify_token,
@@ -348,6 +352,11 @@ async def resolve_company(
         )
     else:
         evidences = evidences_for_company(prefetched_evidences, company.legal_name, city=company.city)
+        ai_overviews = ai_overviews_for_company(
+            prefetched_ai_overviews or [],
+            company.legal_name,
+            city=company.city,
+        )
 
     linkedin_evidences = filter_linkedin_evidences(evidences)
     website_query_evidences = [e for e in evidences if e.query_type == WEBSITE_QUERY]
@@ -362,7 +371,33 @@ async def resolve_company(
             concurrency=min(3, settings.max_website_probes),
         )
 
-    # Last resort: Google Maps place website when Search found nothing usable.
+    # Free final layer: Google AI Overview already returned with Search results.
+    # Runs before Maps (Maps costs an extra Actor call).
+    if not website_candidates and ai_overviews:
+        company_ai = ai_overviews_for_company(ai_overviews, company.legal_name, city=company.city)
+        ai_cand = website_candidate_from_ai_overview(
+            company.legal_name,
+            company_ai,
+            website_evidences,
+        )
+        if ai_cand:
+            Actor.log.info(
+                "AI Overview website fallback for %s → %s",
+                core_name(company.legal_name) or company.legal_name,
+                ai_cand.url,
+            )
+            google_queries_used.append("google_ai_overview")
+            ai_list = [ai_cand]
+            if settings.validate_websites:
+                ai_list = await validate_website_candidates(
+                    company.legal_name,
+                    ai_list,
+                    max_probes=1,
+                    concurrency=1,
+                )
+            website_candidates = ai_list
+
+    # Last resort: Google Maps place website when Search + AI Overview found nothing.
     if settings.fallback_google_maps and not website_candidates:
         maps_candidates = await run_google_maps_fallback(
             company.legal_name,
@@ -465,7 +500,7 @@ async def resolve_company(
                 confidence,
                 core_name(company.legal_name) or company.legal_name,
             )
-            fallback_evidences = await run_google_searches(
+            fallback_evidences, _ = await run_google_searches(
                 [fallback_q],
                 actor_id=settings.google_actor_id,
                 token=settings.apify_token,
@@ -593,7 +628,7 @@ async def resolve_companies_batch(
         query_list.extend(build_initial_queries(company.legal_name, city=company.city))
 
     Actor.log.info("Running initial Google Search for %s companies (%s queries).", len(companies), len(query_list))
-    all_evidences = await run_google_searches(
+    all_evidences, all_ai_overviews = await run_google_searches(
         query_list,
         actor_id=settings.google_actor_id,
         token=settings.apify_token,
@@ -606,7 +641,12 @@ async def resolve_companies_batch(
     results: list[ResolutionResult] = []
     for company in companies:
         try:
-            result = await resolve_company(company, settings, prefetched_evidences=all_evidences)
+            result = await resolve_company(
+                company,
+                settings,
+                prefetched_evidences=all_evidences,
+                prefetched_ai_overviews=all_ai_overviews,
+            )
         except Exception as exc:  # noqa: BLE001
             Actor.log.exception(
                 "Failed resolving company %s: %s",
