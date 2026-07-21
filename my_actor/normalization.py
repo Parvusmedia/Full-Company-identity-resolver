@@ -259,6 +259,29 @@ WEBSITE_NOISE_DOMAINS = {
     "datocapital.com",
     "empresia.es",
     "infocif.es",
+    "datoscif.es",
+    "datosif.es",
+    "e-informa.com",
+    "einforma.com",
+    "economia3.com",
+    "empresite.com",
+    "rankia.com",
+    "expansion.com",
+    "cincodias.com",
+    "dirce.es",
+    "axesor.es",
+    "iberinform.es",
+    "creditsafe.com",
+    "creditsafe.es",
+    "solunion.es",
+    "cesce.es",
+    "companywall.es",
+    "borrmat.com",
+    "guiaempresas.wolterskluwer.es",
+    "wolterskluwer.es",
+    "sabi.bvdinfo.com",
+    "bvdinfo.com",
+    "orbis.bvdinfo.com",
     "librecon.es",
     "paginasamarillas.es",
     "yellowpages.com",
@@ -430,6 +453,37 @@ def distinctive_name_tokens(legal_or_core: str) -> list[str]:
             continue
         out.append(token)
     return out
+
+
+_REGISTRY_TITLE_MARKERS = (
+    "datoscif",
+    "infoempresa",
+    "einforma",
+    "e-informa",
+    "empresite",
+    "northdata",
+    "opencorporates",
+    "axesor",
+    "iberinform",
+    "creditsafe",
+    "companywall",
+    "borrmat",
+    "wolters kluwer",
+    "paginas amarillas",
+    "yellow pages",
+    "borme",
+    "boe.es",
+    "razon social",
+    "cif:",
+    "nif:",
+)
+
+
+def title_looks_like_registry(title: str | None) -> bool:
+    blob = normalize_text(title or "")
+    if not blob:
+        return False
+    return any(marker in blob for marker in _REGISTRY_TITLE_MARKERS)
 
 
 def text_mentions_company(text: str | None, legal_name: str, *, min_hits: int | None = None) -> bool:

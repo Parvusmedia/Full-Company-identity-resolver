@@ -18,6 +18,7 @@ from .normalization import (
     normalize_text,
     slug_from_linkedin_url,
     text_mentions_company,
+    title_looks_like_registry,
     token_coverage,
     website_path_looks_editorial,
 )
@@ -464,6 +465,8 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
             best_title_sim = max(best_title_sim, title_sim)
             title_hit = text_mentions_company(ev.title or "", legal_name)
             snippet_hit = text_mentions_company(ev.snippet or "", legal_name)
+            if title_looks_like_registry(ev.title):
+                title_hit = False
             if title_hit:
                 title_backed = True
             elif snippet_hit:
