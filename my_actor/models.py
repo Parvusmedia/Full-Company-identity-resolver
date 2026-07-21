@@ -66,6 +66,8 @@ class ActorSettings(BaseModel):
     ai_confidence_threshold: int = 78
     batch_size: int = 20
     debug: bool = False
+    validate_websites: bool = True
+    max_website_probes: int = 3
 
 
 class GoogleEvidence(BaseModel):
@@ -96,6 +98,7 @@ class WebsiteCandidate(BaseModel):
     domain: str | None = None
     google_evidences: list[GoogleEvidence] = Field(default_factory=list)
     score: float = 0.0
+    homepage_probe: dict[str, Any] | None = None
 
 
 class AiDecision(BaseModel):

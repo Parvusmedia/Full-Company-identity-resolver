@@ -161,6 +161,7 @@ discovered by Google. Response `element` fields are mapped into the output row.
 - Parent/global LinkedIn pages (e.g. Marsh for Marsh Iberica) are penalized vs local
   entity pages. `/posts/` URLs are not turned into fake `/company/` pages.
 - These quality gates are deterministic and add **no** extra Google or Harvest calls.
+  Homepage validation does one cheap HTTP GET per top website candidate (default 3).
 - Cache via named Key-Value Store is intentionally **not** included in this first
   build (priority: correct build → correct run → correct results).
 - No dataset schema is published yet, to keep the Actor definition minimal and valid.

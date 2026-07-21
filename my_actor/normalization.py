@@ -602,11 +602,33 @@ def is_noise_website_domain(domain: str | None) -> bool:
     return any(d.endswith(f".{noise}") or d == noise for noise in WEBSITE_NOISE_DOMAINS)
 
 
+_DISPOSABLE_SUBDOMAINS = frozenset(
+    {
+        "www",
+        "www2",
+        "www3",
+        "m",
+        "mobile",
+        "blog",
+        "blogs",
+        "news",
+        "shop",
+        "store",
+        "cdn",
+        "static",
+        "img",
+        "images",
+        "assets",
+    }
+)
+
+
 def normalize_homepage_url(url: str | None) -> str | None:
     """Return scheme+host homepage only (no path/query/fragment).
 
-    Collapses city/marketing subdomains to the registrable apex
-    (``vigo.albroksa.com`` → ``https://www.albroksa.com/``).
+    Strips disposable hosts (``www``, ``blog``, …) but keeps meaningful
+    subdomains such as ``servicios-seguros.wtwco.com`` or ``es.site.com``.
+    City branch hosts like ``vigo.albroksa.com`` still collapse to apex.
     """
     if not url:
         return None
@@ -618,17 +640,51 @@ def normalize_homepage_url(url: str | None) -> str | None:
     if not host:
         return None
     host = host.split("@")[-1]
-    # Drop non-default ports from homepage canonical form
     if ":" in host:
         name, _, port = host.rpartition(":")
-        if port.isdigit() and port not in {"80", "443"}:
-            pass  # keep rare non-default ports
-        else:
+        if not (port.isdigit() and port not in {"80", "443"}):
             host = name or host
     apex = extract_registrable_domain(host) or host.removeprefix("www.")
     if not apex:
         return None
-    return urlunparse(("https", f"www.{apex}", "/", "", "", ""))
+
+    labels = host.removeprefix("www.").split(".")
+    apex_labels = apex.split(".")
+    # subdomain labels = host without apex
+    if len(labels) > len(apex_labels):
+        sub_labels = labels[: len(labels) - len(apex_labels)]
+    else:
+        sub_labels = []
+
+    keep_sub: list[str] = []
+    for label in sub_labels:
+        if label in _DISPOSABLE_SUBDOMAINS:
+            continue
+        # Collapse obvious geographic branch hosts onto apex.
+        if label in {
+            "vigo",
+            "madrid",
+            "barcelona",
+            "valencia",
+            "sevilla",
+            "bilbao",
+            "malaga",
+            "zaragoza",
+            "oviedo",
+            "gijon",
+            "aviles",
+            "delegacion",
+            "sucursal",
+            "oficina",
+        }:
+            continue
+        keep_sub.append(label)
+
+    if keep_sub:
+        final_host = ".".join(keep_sub + apex_labels)
+    else:
+        final_host = f"www.{apex}"
+    return urlunparse(("https", final_host, "/", "", "", ""))
 
 
 def website_path_looks_editorial(url: str | None) -> bool:

@@ -55,6 +55,7 @@ from .scoring import (
     confidence_from_status,
     name_similarity,
 )
+from .website_probe import validate_website_candidates
 
 
 def parse_input_companies(raw_input: dict[str, Any]) -> list[CompanyInput]:
@@ -117,6 +118,8 @@ def settings_from_input(raw_input: dict[str, Any], *, env_token: str | None, env
         ai_confidence_threshold=int(raw_input.get("ai_confidence_threshold") or 78),
         batch_size=int(raw_input.get("batch_size") or 20),
         debug=bool(raw_input.get("debug", False)),
+        validate_websites=bool(raw_input.get("validate_websites", True)),
+        max_website_probes=int(raw_input.get("max_website_probes") or 3),
     )
 
 
@@ -347,6 +350,13 @@ async def resolve_company(
     # Never fall back to LinkedIn SERP URLs as websites — that invents false domains.
     website_evidences = filter_website_evidences(website_query_evidences)
     website_candidates = build_website_candidates(website_evidences, company.legal_name)
+    if settings.validate_websites and website_candidates:
+        website_candidates = await validate_website_candidates(
+            company.legal_name,
+            website_candidates,
+            max_probes=settings.max_website_probes,
+            concurrency=min(3, settings.max_website_probes),
+        )
 
     candidates = _dedupe_linkedin_candidates(linkedin_evidences)
     for cand in candidates:

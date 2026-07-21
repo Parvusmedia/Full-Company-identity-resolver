@@ -147,6 +147,10 @@ def test_website_homepage_and_noise_filter() -> None:
     assert normalize_homepage_url("https://www.telefonica.es/es/nosotros/") == "https://www.telefonica.es/"
     assert normalize_homepage_url("http://espabrok.es/contacto/") == "https://www.espabrok.es/"
     assert normalize_homepage_url("https://vigo.albroksa.com/contacto/") == "https://www.albroksa.com/"
+    assert (
+        normalize_homepage_url("https://servicios-seguros.wtwco.com/Admin/Public/p/quienes-somos")
+        == "https://servicios-seguros.wtwco.com/"
+    )
     assert is_noise_website_domain("infoempresa.com")
     assert is_noise_website_domain("empresite.eleconomista.es")
     assert is_noise_website_domain("boe.es")
@@ -390,6 +394,42 @@ def test_parent_page_penalty_and_no_post_derivation() -> None:
     print("OK parent-page penalty + no post→company derivation")
 
 
+def test_homepage_probe_rejects_global_brand_for_iberica() -> None:
+    from my_actor.website_probe import HomepageProbe, evaluate_homepage_probe, parse_homepage_html
+
+    title, meta, text = parse_homepage_html(
+        "<html><head><title>WTW - Willis Towers Watson</title>"
+        "<meta name='description' content='Global advisory firm'></head>"
+        "<body><h1>WTW</h1><p>Risk, benefits and brokerage worldwide.</p></body></html>"
+    )
+    probe = HomepageProbe(
+        url="https://www.wtwco.com/",
+        final_url="https://www.wtwco.com/",
+        title=title,
+        meta_description=meta,
+        text_sample=text,
+        ok=True,
+    )
+    out = evaluate_homepage_probe("Willis Iberia Correduria De Seguros Y Reaseguros, S.A.", probe)
+    assert out.reject is True
+    assert any("local_qualifier" in r or "no_company_tokens" in r for r in (out.reasons or []))
+
+    local = HomepageProbe(
+        url="https://servicios-seguros.wtwco.com/",
+        final_url="https://servicios-seguros.wtwco.com/",
+        title="Willis Iberia - Servicios de seguros",
+        meta_description="Correduría Willis Iberia",
+        text_sample="Willis Iberia Correduria de Seguros y Reaseguros en España",
+        ok=True,
+    )
+    local_out = evaluate_homepage_probe(
+        "Willis Iberia Correduria De Seguros Y Reaseguros, S.A.", local
+    )
+    assert local_out.reject is False
+    assert local_out.score_delta > 0
+    print("OK homepage probe rejects global WTW for Willis Iberia")
+
+
 def main() -> None:
     test_json_files()
     test_parse_queries()
@@ -402,6 +442,7 @@ def main() -> None:
     test_website_homepage_and_noise_filter()
     test_batch_evidence_no_substring_bleed()
     test_parent_page_penalty_and_no_post_derivation()
+    test_homepage_probe_rejects_global_brand_for_iberica()
     print("\nAll local checks passed.")
 
 
