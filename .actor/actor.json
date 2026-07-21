@@ -2,7 +2,7 @@
   "actorSpecification": 1,
   "name": "company-identity-resolver",
   "title": "Company Identity Resolver: Legal Name → LinkedIn & Website",
-  "description": "Resolves a company name, legal name (razón social), or LinkedIn company URL into one enrichment row: LinkedIn, official website, domain, employees, HQ, confidence and evidence. Built for prospecting, CRM enrichment and LinkedIn Ads.",
+  "description": "Paste company or legal names and get LinkedIn, official website, domain, HQ, employees, confidence and evidence — one row per company. All-inclusive: no Harvest/OpenAI/Google API keys required. Built for CRM enrichment, prospecting and LinkedIn Ads.",
   "version": "0.1",
   "meta": {
     "canonicalOrigin": "https://github.com/Parvusmedia/Full-Company-identity-resolver"

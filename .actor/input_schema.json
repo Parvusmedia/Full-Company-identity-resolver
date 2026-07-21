@@ -1,18 +1,18 @@
 {
-  "title": "Full Company Identity Resolver Input",
+  "title": "Company Identity Resolver Input",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
     "queries": {
-      "title": "Queries",
-      "description": "Newline-separated Spanish company legal names. Used when companies is empty. Compatible with the previous Actor.",
+      "title": "Company names",
+      "description": "Paste one company name or legal name (razón social) per line. No API keys needed — enrichment is included.",
       "type": "string",
       "editor": "textarea",
-      "prefill": "Albrok Mediacion S.A.\nOtra Empresa S.L."
+      "prefill": "Albrok Mediacion S.A.\nWillis Iberia Correduria De Seguros Y Reaseguros, S.A.\nTelefonica S.A."
     },
     "companies": {
-      "title": "Companies",
-      "description": "Structured company list. When provided, takes priority over queries.",
+      "title": "Companies (structured)",
+      "description": "Optional structured list. When provided, takes priority over the textarea. Only company names are required.",
       "type": "array",
       "editor": "json",
       "items": {
@@ -20,74 +20,62 @@
         "properties": {
           "source_id": {
             "title": "Source ID",
-            "description": "External identifier from the source CRM or system.",
+            "description": "Your CRM / spreadsheet row id (returned unchanged).",
             "type": "string",
             "editor": "textfield"
           },
           "legal_name": {
-            "title": "Legal name",
-            "description": "Company legal name / razón social.",
-            "type": "string",
-            "editor": "textfield"
-          },
-          "tax_id": {
-            "title": "Tax ID",
-            "description": "Spanish tax identifier (NIF/CIF), optional.",
+            "title": "Company / legal name",
+            "description": "Brand name or legal name / razón social.",
             "type": "string",
             "editor": "textfield"
           },
           "city": {
             "title": "City",
-            "description": "City hint used for scoring and disambiguation.",
+            "description": "Optional city hint to improve matching.",
             "type": "string",
             "editor": "textfield"
           },
           "province": {
-            "title": "Province",
-            "description": "Province hint used for scoring and disambiguation.",
+            "title": "Province / region",
+            "description": "Optional region hint.",
             "type": "string",
             "editor": "textfield"
           },
           "country": {
             "title": "Country",
-            "description": "Country hint. Defaults to España when omitted.",
+            "description": "Optional country hint. Defaults to España.",
             "type": "string",
             "editor": "textfield",
             "default": "España"
           },
-          "existing_website": {
-            "title": "Existing website",
-            "description": "Prior website from CRM/NocoDB. With skip_if_good_website, confirmed/high_confidence rows are not re-resolved.",
-            "type": "string",
-            "editor": "textfield"
-          },
-          "existing_domain": {
-            "title": "Existing domain",
-            "description": "Prior domain from CRM/NocoDB.",
-            "type": "string",
-            "editor": "textfield"
-          },
-          "existing_match_status": {
-            "title": "Existing match status",
-            "description": "Prior match_status (confirmed/high_confidence/…). Used with skip_if_good_website.",
-            "type": "string",
-            "editor": "textfield"
-          },
-          "existing_linkedin_url": {
-            "title": "Existing LinkedIn URL",
-            "description": "Prior LinkedIn URL preserved when the row is skipped.",
+          "tax_id": {
+            "title": "Tax ID",
+            "description": "Optional tax id (NIF/CIF). Stored on the output row; not required for resolution.",
             "type": "string",
             "editor": "textfield"
           },
           "website": {
-            "title": "Website (alias)",
-            "description": "Alias for existing_website when exporting from NocoDB.",
+            "title": "Known website (skip if already enriched)",
+            "description": "If you already have a good website + confirmed match, the Actor can skip re-resolving this row.",
             "type": "string",
             "editor": "textfield"
           },
           "match_status": {
-            "title": "Match status (alias)",
-            "description": "Alias for existing_match_status.",
+            "title": "Known match status",
+            "description": "Prior status (confirmed / high_confidence). Used with known website to skip.",
+            "type": "string",
+            "editor": "textfield"
+          },
+          "linkedin_url": {
+            "title": "Known LinkedIn URL",
+            "description": "Preserved when the row is skipped.",
+            "type": "string",
+            "editor": "textfield"
+          },
+          "domain": {
+            "title": "Known domain",
+            "description": "Optional prior domain.",
             "type": "string",
             "editor": "textfield"
           }
@@ -95,188 +83,23 @@
         "required": ["legal_name"]
       }
     },
-    "apify_token": {
-      "title": "Apify token",
-      "description": "Optional fallback Apify API token. Prefer APIFY_TOKEN environment variable. Never logged.",
-      "type": "string",
-      "editor": "textfield",
-      "isSecret": true
-    },
-    "google_actor_id": {
-      "title": "Google Actor ID",
-      "description": "Apify Actor used for Google Search. Default: apify/google-search-scraper.",
-      "type": "string",
-      "editor": "textfield",
-      "default": "apify/google-search-scraper"
-    },
-    "google_results_per_page": {
-      "title": "Google results per page",
-      "description": "Number of organic results requested per Google query.",
-      "type": "integer",
-      "editor": "number",
-      "default": 10,
-      "minimum": 1,
-      "maximum": 100
-    },
     "country_code": {
-      "title": "Country code",
-      "description": "Google Search countryCode, e.g. es.",
+      "title": "Search country",
+      "description": "Google Search country (e.g. es, fr, us). Default es.",
       "type": "string",
       "editor": "textfield",
       "default": "es"
     },
     "language_code": {
-      "title": "Language code",
-      "description": "Google Search languageCode, e.g. es.",
+      "title": "Search language",
+      "description": "Google Search language (e.g. es, en). Default es.",
       "type": "string",
       "editor": "textfield",
       "default": "es"
     },
-    "max_harvest_candidates": {
-      "title": "Max Harvest candidates",
-      "description": "Maximum LinkedIn candidates enriched with HarvestAPI per company (1-3 recommended).",
-      "type": "integer",
-      "editor": "number",
-      "default": 2,
-      "minimum": 1,
-      "maximum": 5
-    },
-    "harvest_api_key": {
-      "title": "Harvest API key",
-      "description": "Optional fallback HarvestAPI key. Prefer HARVEST_API_KEY environment variable. Never logged.",
-      "type": "string",
-      "editor": "textfield",
-      "isSecret": true
-    },
-    "harvest_concurrency": {
-      "title": "Harvest concurrency",
-      "description": "Maximum concurrent HarvestAPI requests.",
-      "type": "integer",
-      "editor": "number",
-      "default": 3,
-      "minimum": 1,
-      "maximum": 10
-    },
-    "fallback_google_by_website": {
-      "title": "Fallback Google by website",
-      "description": "If LinkedIn confidence is low/missing AND a strong website was already found, run site:linkedin.com/company \"domain\".",
-      "type": "boolean",
-      "editor": "checkbox",
-      "default": true
-    },
-    "fallback_confidence_threshold": {
-      "title": "Fallback confidence threshold",
-      "description": "Run domain fallback Google search when selected confidence is below this value.",
-      "type": "integer",
-      "editor": "number",
-      "default": 78,
-      "minimum": 0,
-      "maximum": 100
-    },
-    "use_ai_for_ambiguous": {
-      "title": "Use AI for ambiguous cases",
-      "description": "Optionally ask OpenAI to choose among ambiguous candidates. Deterministic scoring remains primary.",
-      "type": "boolean",
-      "editor": "checkbox",
-      "default": false
-    },
-    "openai_api_key": {
-      "title": "OpenAI API key",
-      "description": "Optional fallback OpenAI key. Prefer OPENAI_API_KEY environment variable. Never logged.",
-      "type": "string",
-      "editor": "textfield",
-      "isSecret": true
-    },
-    "openai_model": {
-      "title": "OpenAI model",
-      "description": "Model used when AI disambiguation is enabled.",
-      "type": "string",
-      "editor": "textfield",
-      "default": "gpt-4o-mini"
-    },
-    "ai_confidence_threshold": {
-      "title": "AI confidence threshold",
-      "description": "Invoke AI only when deterministic confidence is below this value.",
-      "type": "integer",
-      "editor": "number",
-      "default": 78,
-      "minimum": 0,
-      "maximum": 100
-    },
-    "batch_size": {
-      "title": "Batch size",
-      "description": "Maximum number of Google queries grouped into a single remote Actor run.",
-      "type": "integer",
-      "editor": "number",
-      "default": 20,
-      "minimum": 1,
-      "maximum": 200
-    },
-    "validate_websites": {
-      "title": "Validate websites by homepage fetch",
-      "description": "Fetch top website candidate homepages (HTTP GET, no paid API) and re-rank/reject pages that do not mention the company. Cheap and recommended.",
-      "type": "boolean",
-      "editor": "checkbox",
-      "default": true
-    },
-    "max_website_probes": {
-      "title": "Max website homepage probes",
-      "description": "How many top website candidates to fetch for homepage validation. Default 1 is enough for most batches.",
-      "type": "integer",
-      "editor": "number",
-      "default": 1,
-      "minimum": 0,
-      "maximum": 5
-    },
-    "fallback_google_maps": {
-      "title": "Google Maps fallback",
-      "description": "When Google Search finds no usable website, query Google Maps places as a last resort (extra Actor cost). Off by default — enable only for stubborn empty-website backfills.",
-      "type": "boolean",
-      "editor": "checkbox",
-      "default": false
-    },
-    "google_maps_actor_id": {
-      "title": "Google Maps Actor ID",
-      "description": "Apify Actor used for Maps fallback. Default: compass/crawler-google-places.",
-      "type": "string",
-      "editor": "textfield",
-      "default": "compass/crawler-google-places"
-    },
-    "google_maps_max_places": {
-      "title": "Max Maps places",
-      "description": "Maximum places to crawl per Maps fallback search.",
-      "type": "integer",
-      "editor": "number",
-      "default": 5,
-      "minimum": 1,
-      "maximum": 10
-    },
-    "skip_if_good_website": {
-      "title": "Skip if good website exists",
-      "description": "When companies include existing_website + confirmed/high_confidence match_status and the domain is not noise, skip Google/Harvest entirely.",
-      "type": "boolean",
-      "editor": "checkbox",
-      "default": true
-    },
-    "defer_core_linkedin": {
-      "title": "Defer core-name LinkedIn query",
-      "description": "Run the second LinkedIn query (name without SA/SL) only when the exact legal-name query finds no /company/ page.",
-      "type": "boolean",
-      "editor": "checkbox",
-      "default": true
-    },
-    "harvest_pre_score_gap": {
-      "title": "Harvest pre-score gap",
-      "description": "If the top LinkedIn pre-score leads the second by at least this margin, enrich only the top candidate.",
-      "type": "number",
-      "editor": "number",
-      "default": 15,
-      "minimum": 0,
-      "maximum": 100
-    },
     "debug": {
-      "title": "Debug",
-      "description": "When true, include candidates, website_candidates, ai_decision and raw_harvest in the output row.",
+      "title": "Include debug fields",
+      "description": "When true, also return candidate lists and scoring details (larger output).",
       "type": "boolean",
       "editor": "checkbox",
       "default": false

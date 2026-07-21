@@ -1,205 +1,168 @@
 # Apify Store listing — Company Identity Resolver
 
-Use this file as the source of truth when filling **Publication** in Apify Console.
+Source of truth for **Publication** in Apify Console.
+
+**Product model:** end users only paste company names.  
+**You** (publisher) supply `APIFY_TOKEN` + `HARVEST_API_KEY` (+ optional OpenAI) as Actor env vars.  
+Price must cover **all COGS + Apify’s ~20% cut**.
 
 ---
 
-## 4) Identity (name + positioning)
+## 4) Identity
 
-### Recommended Store title
-**Company Identity Resolver — Legal Name to LinkedIn, Website & Domain**
+### Title
+**Company Identity Resolver: Legal Name → LinkedIn & Website**
 
-### Actor name (URL slug)
-`company-identity-resolver`  
-(Console → Settings → rename if still `full-company-identity-resolver`)
+### Slug
+`company-identity-resolver`
 
-### One-line SEO description (≤160 chars)
-Resolves company / legal / LinkedIn names into one row: LinkedIn, website, domain, HQ, employees, confidence & evidence. For CRM, prospecting & LinkedIn Ads.
+### One-line (≤160 chars)
+Paste company or legal names → get LinkedIn, official website, domain, HQ, employees, confidence & evidence. All-inclusive — no API keys to configure.
 
-### Longer Store description (paste into Publication → Description)
+### Store description
 
 ```text
-Turn messy company inputs into a clean B2B identity record.
+Turn company / legal names into a clean B2B identity record — no API keys required.
 
-Input any of:
-• Legal name / razón social (e.g. “Willis Iberia Correduría…, S.A.”)
-• Commercial / brand name
+What you provide
+• Company name or legal name (razón social), one per line
 • Optional city / country hints
 
-Output exactly one enrichment row per company with:
-• LinkedIn company URL (normalized /company/…)
-• Official website + domain (directories, gazettes & news rejected)
-• Industry, employees, followers, HQ, phone, logo (when enrichment succeeds)
-• match_status, confidence, relationship and an evidence summary
+What you get (one row per company)
+• LinkedIn company URL
+• Official website + domain (directories & registries filtered out)
+• Industry, employees, followers, HQ (when available)
+• match_status, confidence, relationship, evidence summary
 
-Why this is not “just a LinkedIn finder”
-• Google discovery + scoring + homepage validation + optional AI Overview brand bridge
-• Harvest enrichment for firmographics
-• Explicit rejection of registry/directory noise (infoempresa, BORME, empresite, …)
-• Built for prospecting lists, CRM enrichment and LinkedIn / paid-media audience building
+This is not a raw LinkedIn scraper. It combines web discovery, scoring, homepage checks
+and firmographic enrichment into a single paid service.
 
-Best fit today: Spain & Spanish-language SERPs (country_code=es). Country/language are configurable; global registry denylists can be extended.
+Ideal for: CRM enrichment, prospecting lists, LinkedIn Ads audiences.
 
-Pricing: Pay per resolved company (dataset row). See README Pricing.
+Strongest today on Spanish / ES search results; country & language are configurable.
+
+Pricing: all-inclusive pay-per-company (see Pricing). You only pay Apify for this Actor —
+no Harvest, OpenAI or extra Google API keys to bring.
 ```
 
-### Categories / tags (Console)
-`Lead generation` · `AI` · `Automation` · `Business` · `Developer tools`  
-Keywords: `linkedin company`, `crm enrichment`, `legal name`, `website finder`, `b2b identity`, `prospecting`, `razón social`
-
-### Use-case bullets (README / Store)
-1. Enrich CRM accounts from legal names before outreach  
-2. Build LinkedIn Ads matched audiences from company lists  
-3. Clean prospecting CSVs: legal name → LinkedIn + website + domain  
-4. Disambiguate subsidiaries vs parent brand pages  
+### Tags
+Lead generation · Business · Automation · CRM · LinkedIn · enrichment · legal name · prospecting
 
 ---
 
-## 1) Pricing (rentable but reasonable)
+## 1) Pricing (all-inclusive for the user)
 
-### Cost structure (your COGS per company, typical)
+### Your real COGS per company (you pay these)
 
-| Step | Approx. cost |
+| Cost | Typical | Notes |
+|---|---|---|
+| Nested Google Search (~2 queries) | $0.02–0.05 | Billed as Apify platform usage on *your* account |
+| Actor compute + homepage GET | $0.01–0.03 | Platform usage |
+| Harvest LinkedIn enrichment | $0.03–0.08 | **Your** HarvestAPI invoice (not Apify) |
+| Optional OpenAI (rare) | ~$0.00–0.01 | Usually off |
+| Retries / hard cases / Maps (if on) | buffer | |
+| **COGS mid** | **~$0.08** | |
+| **COGS high** | **~$0.12–0.15** | |
+
+### Apify take
+You keep **~80%** of PPE revenue.  
+`profit ≈ 0.8 × price − COGS`  
+(if you absorb platform usage; recommended for “all-inclusive” UX)
+
+### Recommended list price
+
+| | |
 |---|---|
-| Nested Google Search (≈2 queries) | $0.01–0.04 |
-| Actor compute + homepage GET | $0.005–0.02 |
-| Harvest LinkedIn enrichment (1–2 calls) | $0.02–0.08 |
-| **Total COGS** | **~$0.04–0.12** |
+| **PPE primary event** | `apify-default-dataset-item` |
+| **Price** | **$0.18 per company** ≈ **$180 / 1,000** |
+| **Platform usage** | **Absorb** (do **not** pass to user) so the Store page shows one clear price |
+| Actor start event | keep Apify default (tiny) |
 
-Your Actor is **enrichment**, not raw scrape — price above plain scrapers ($1–10 / 1k results).
+### Unit economics at $0.18
 
-### Recommended model: **Pay per event (PPE)** — primary
+| | Amount |
+|---|---|
+| User pays | $0.18 |
+| You receive (80%) | $0.144 |
+| COGS mid ($0.08) | −$0.08 |
+| **Net ≈** | **~$0.06 / company** |
+| COGS high ($0.12) | −$0.12 |
+| **Net ≈** | **~$0.02 / company** |
 
-| Event | Price | Role |
+That is tight on hard rows — monitor **Analytics → cost per 1,000**.  
+If Harvest average > $0.06, raise to **$0.22** ($220/1k) after the 14-day notice window.
+
+### Launch ladder
+
+| Phase | Price / company | When |
 |---|---|---|
-| `apify-default-dataset-item` (**primary**) | **$0.10** / company row | Main charge ≈ **$100 / 1,000 companies** |
-| `apify-actor-start` | leave default (~$0.00005–0.001) | Covers cold start; Apify often gives free first seconds |
+| Soft launch | $0.15 | First reviews (thin margin — watch COGS) |
+| **Standard** | **$0.18** | Default |
+| Premium | $0.22–0.25 | Multi-country / higher fill rate |
 
-**Also enable:** *Pass platform usage costs to the user* (at least for the first 60–90 days).  
-That way nested Google Search + CU do not eat your 80% share while you learn real COGS.
+### Do not
+- Ask users for Harvest / OpenAI / Google keys  
+- Use rental pricing (sunset 2026)  
+- Price like a $5/1k scraper — this is enrichment
 
-### Profit sketch (PPE, usage passed to user)
-
-- User pays: $0.10/result + platform usage  
-- You receive: `0.8 × $0.10` = **$0.08 / company**  
-- Your remaining COGS: mainly **Harvest API** (keep this in your margin)  
-- At 10k companies/month ≈ **$800** gross to you before Harvest
-
-### Alternative launch ladder
-
-| Phase | Price / row | When |
-|---|---|---|
-| Launch | **$0.08** ($80/1k) | First reviews, Spain-focused |
-| Standard | **$0.10** ($100/1k) | After stable quality |
-| Premium | **$0.12–0.15** | If you add multi-country denylists / higher fill rate |
-
-Do **not** use rental (sunset Apr–Oct 2026). Prefer PPE.
-
-### Free-tier policy (transparent)
-- Allow small demo runs (e.g. max 5 companies) **or** rely on Apify free plan limits.  
-- State clearly in README: “Production enrichment requires an Apify paid plan + this Actor’s PPE charges.”
+### Abuse controls (with embedded keys)
+- Cap run size in README (e.g. recommend ≤500 companies/run)  
+- Optional hard cap in code later (`max_companies`)  
+- Memory/timeout defaults that discourage mega-abuse  
 
 ---
 
-## 3) How money flows (user → Apify → you)
+## 3) Money flow
 
 ```text
-End user (paid Apify plan)
-   │  pays prepaid usage / invoice on Apify
-   ▼
-Apify Console
-   │  charges PPE events + (optional) platform usage
-   │  keeps ~20% marketplace share
-   ▼
-Your profit = 0.8 × PPE revenue  −  (platform usage you absorb*)
-   │  *0 if you “pass usage to user”
-   ▼
-Monthly payout (invoice ~11th of next month)
-   │  PayPal / Wise (min ~$20) or bank transfer (min ~$100)
-   ▼
-Your payout method in Console
+User pastes company names → runs Actor
+        ↓
+Pays Apify: $0.18 × rows  (+ their Apify plan)
+        ↓
+Apify keeps ~20% of PPE
+        ↓
+You get ~80% of PPE, and YOU pay Harvest + platform usage from that
+        ↓
+Monthly payout (~11th): PayPal/Wise (≥$20) or bank (≥$100)
 ```
 
-### Where to configure
-
-1. [Apify Console](https://console.apify.com/) → **Settings → Billing**  
-   - Add billing / tax identity  
-   - Identity verification (required for payouts)  
-2. Same area → **Payout method** (PayPal, Wise, or bank)  
-3. **Your Actor → Publication → Monetization → Set up monetization**  
-   - Model: **Pay per event**  
-   - Primary event: dataset item @ **$0.10**  
-   - Toggle: **Pass platform usage to users**  
-4. Analytics: **Development → Insights → Analytics** (revenue, cost/1k, profit)
-
-Docs:  
-- https://docs.apify.com/platform/actors/publishing/monetize  
-- https://docs.apify.com/platform/actors/publishing/monetize/monthly-payouts  
-- https://docs.apify.com/platform/actors/publishing/monetize/pay-per-event  
-
-You never collect the end-user card yourself. **Apify is the merchant of record**; they pay you.
+Configure: **Settings → Billing / Payouts** + **Actor → Publication → Monetization**.
 
 ---
 
-## 2) Store profile checklist (screens, data, instructions)
+## 2) Store assets in this repo
 
-### Files in this repo
 | File | Use |
 |---|---|
-| `store/example_input.json` | Console “Example input” + README |
-| `store/example_output.json` | Screenshot of Dataset tab / docs |
-| `store/screenshot_mockup.html` | Open in browser → capture 3 Store screenshots |
-| `.actor/dataset_schema.json` | Output field documentation in Store |
-| `.actor/actor.json` | Title + description |
+| `store/example_input.json` | Example — names only |
+| `store/example_output.json` | Dataset sample |
+| `store/screenshot_mockup.html` | 3 screenshots |
+| `store/banner.png` | Banner |
+| `.actor/input_schema.json` | **No API key fields** |
 
-### Screenshots to upload (Publication → Images)
-Open `store/screenshot_mockup.html` locally and capture:
+### Publisher-only env vars (Actor → Settings → Environment)
 
-1. **Hero / value** — title + “1 legal name → LinkedIn + website + domain”  
-2. **Input** — companies JSON with legal names  
-3. **Output table** — dataset columns: legal_name, linkedin_url, website, domain, match_status, confidence  
+| Var | Required |
+|---|---|
+| `APIFY_TOKEN` | Yes (nested Google Search) |
+| `HARVEST_API_KEY` | Yes (firmographics) |
+| `OPENAI_API_KEY` | Optional |
 
-Also run a real Console run and screenshot:
-4. Run detail (Succeeded)  
-5. Dataset preview with Willis / Albrok / Telefónica  
+Never document these as user input.
 
-Recommended image size: 1280×720 or similar landscape.
-
-### README sections Apify expects
-- What it does / who it’s for  
-- Input / output examples  
-- Pricing  
-- Limitations (Spain-strong; directories vary by country)  
-- Secrets: `APIFY_TOKEN`, `HARVEST_API_KEY` (document that publisher may embed keys for Store users — **or** require BYO keys; decide before publish)
-
-### Critical product decision before publish
-**Who pays for Harvest + nested Google?**
-
-| Option | Pros | Cons |
-|---|---|---|
-| **A. You embed keys** (recommended for Store UX) | One-click runs | You must price COGS into PPE; abuse risk → set max items / memory |
-| **B. User BYO keys** | Lower your COGS risk | Worse conversion; more support |
-
-Recommendation for Store: **A + pass Apify platform usage + PPE $0.10**, with `maxItems`-style limits via input validation if needed.
+### Screenshots
+1. Hero value prop  
+2. Input = company names only  
+3. Output table LinkedIn + website + status  
 
 ---
 
-## Publication wizard steps (order)
+## Publication checklist
 
-1. Finish identity verification + payout method  
-2. Rename Actor + paste title/description from this file  
-3. Upload 3–5 screenshots  
-4. Set README (repo README is fine once Store section is included)  
-5. Monetization → PPE → $0.10 / dataset item → pass usage  
-6. Publish to Store (Public)  
-7. Share: LinkedIn, Reddit r/apify, Product Hunt, outbound to agencies doing ES lead-gen  
-
----
-
-## Honest limitations (put in README)
-
-- Strongest quality on **Spanish** SERPs / registries; other countries work but need denylist expansion.  
-- Not a people scraper — **companies only**.  
-- LinkedIn personal `/in/` profiles are ignored.  
-- `partial` = website found, LinkedIn missing (still billable as a resolved row — be transparent).  
-- Optional Maps / OpenAI increase cost; off by default.
+1. Identity verification + payout method  
+2. Env vars set on the Actor (your tokens)  
+3. Title + description from this file  
+4. Screenshots + banner  
+5. Monetization: PPE **$0.18** / dataset item, **absorb** platform usage  
+6. Publish public  
+7. Watch cost/1k weekly; raise price if margin < ~$0.03  

@@ -3,29 +3,20 @@
     {
       "source_id": "demo-1",
       "legal_name": "Willis Iberia Correduria De Seguros Y Reaseguros, S.A.",
-      "city": "Madrid",
-      "country": "España"
+      "city": "Madrid"
     },
     {
       "source_id": "demo-2",
       "legal_name": "Albrok Mediacion S.A.",
-      "city": "Madrid",
-      "country": "España"
+      "city": "Madrid"
     },
     {
       "source_id": "demo-3",
       "legal_name": "Telefonica S.A.",
-      "city": "Madrid",
-      "country": "España"
+      "city": "Madrid"
     }
   ],
   "country_code": "es",
   "language_code": "es",
-  "debug": false,
-  "validate_websites": true,
-  "max_website_probes": 1,
-  "fallback_google_maps": false,
-  "max_harvest_candidates": 2,
-  "skip_if_good_website": true,
-  "defer_core_linkedin": true
+  "debug": false
 }
