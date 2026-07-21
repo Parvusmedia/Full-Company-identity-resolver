@@ -270,6 +270,29 @@ def test_website_homepage_and_noise_filter() -> None:
     assert website_v == "https://www.alkora.es/"
     assert domain_v == "alkora.es"
 
+    # Harvest website should dominate Google when present and non-noise
+    website_h, domain_h, _, harvest_clean = select_official_website(
+        legal_name="Albrok Mediacion S.A.",
+        harvest_website="https://www.albroksa.com/es/contacto",
+        google_website="https://www.infoempresa.com/company/albrok",
+        google_domain="infoempresa.com",
+        google_content_backed=False,
+    )
+    assert website_h == "https://www.albroksa.com/"
+    assert domain_h == "albroksa.com"
+    assert harvest_clean == "https://www.albroksa.com/"
+
+    # Harvest also beats a weaker Google brand mention
+    website_h2, domain_h2, _, _ = select_official_website(
+        legal_name="Peris Correduria De Seguros S.A.",
+        harvest_website="http://www.peris.es/quienes-somos",
+        google_website="https://www.elespanol.com/noticia-peris",
+        google_domain="elespanol.com",
+        google_content_backed=True,
+    )
+    assert website_h2 == "https://www.peris.es/"
+    assert domain_h2 == "peris.es"
+
     # Snippet-only competitor mention must not become the official website
     competitor = build_website_candidates(
         [

@@ -321,11 +321,26 @@ def compute_final_score(
                 score -= 4.0
                 reasons.append("domain_conflict_size_dampen")
     elif harvest_domain and not google_domain:
-        score += 4.0
+        # Harvest website is a strong identity anchor when Google has none.
+        score += 14.0
         reasons.append("harvest_website_present")
     elif google_domain and not harvest_domain:
         score += 2.0
         reasons.append("google_website_present_only")
+    elif harvest_domain and google_domain and google_domain != harvest_domain:
+        # Already handled in conflict branch above; reinforce Harvest when its
+        # domain resembles the legal name more than Google's.
+        pass
+
+    # Extra weight: Harvest website domain resembles the company name.
+    if harvest_domain and not is_noise_website_domain(harvest_domain):
+        harvest_label_sim = name_similarity(core, domain_label(harvest_domain))
+        if harvest_label_sim >= 70:
+            score += 10.0
+            reasons.append(f"harvest_website_name_match={harvest_label_sim:.1f}")
+        elif harvest_label_sim >= 45:
+            score += 5.0
+            reasons.append(f"harvest_website_name_partial={harvest_label_sim:.1f}")
 
     # Headquarters / city
     hq_text = ""

@@ -654,14 +654,16 @@ def select_official_website(
     Choose a clean official homepage.
 
     Returns (website, domain, google_website_clean, harvest_website_clean).
-    Prefers Harvest when its domain resembles the company. Google results that
-    already passed ranking (including brand/group pages whose domain differs
-    from the legal name, e.g. Verspieren → alkora.es) are kept when
-    ``google_content_backed`` is True or domain similarity is high enough.
+
+    Priority: Harvest website is the primary signal when present and not noise.
+    Google may override only when Harvest is missing/mismatched and Google is
+    clearly better (strong domain match or trusted content-backed brand page).
     """
     from rapidfuzz import fuzz
 
     core = core_name(legal_name)
+    legal_tokens = set(core.split())
+    wants_local_es = bool(_normalize_qualifier_set(legal_tokens & _ENTITY_QUALIFIER_TOKENS))
 
     def _sim(domain: str | None) -> float:
         label = domain_label(domain)
@@ -681,31 +683,42 @@ def select_official_website(
     google_sim = 0.0
     if google_website and google_dom and not is_noise_website_domain(google_dom):
         google_sim = _sim(google_dom)
-        # Content-backed Google candidates (title/snippet mention the company) may
-        # use a commercial brand domain that does not resemble the legal name.
         if google_content_backed or google_sim >= min_domain_similarity:
             google_clean = normalize_homepage_url(google_website)
         else:
             google_dom = None
 
-    # Prefer Harvest when domain resembles the company; never keep a mismatched Harvest site
-    # just because Google had nothing useful (avoids assigning another firm's homepage).
     def _rank(sim: float, domain: str | None) -> float:
-        # Slight preference for Spanish ccTLD when resolving Spanish legal entities.
         bonus = 6.0 if domain and domain.endswith(".es") else 0.0
         return sim + bonus
 
     harvest_rank = _rank(harvest_sim, harvest_dom) if harvest_clean else -1.0
     google_rank = _rank(google_sim, google_dom) if google_clean else -1.0
 
-    if harvest_clean and harvest_sim >= 40 and harvest_rank >= google_rank:
+    # 1) Harvest is authoritative when it looks even loosely related to the company.
+    if harvest_clean and harvest_sim >= 25:
+        # Rare override: local .es brand page clearly beats a foreign parent Harvest site.
+        if (
+            google_clean
+            and google_content_backed
+            and wants_local_es
+            and google_dom
+            and google_dom.endswith(".es")
+            and harvest_dom
+            and not harvest_dom.endswith(".es")
+            and google_rank >= harvest_rank + 15
+        ):
+            return google_clean, google_dom, google_clean, harvest_clean
         return harvest_clean, harvest_dom, google_clean, harvest_clean
-    if google_clean and (google_rank > harvest_rank or (google_content_backed and harvest_sim < 40)):
-        return google_clean, google_dom, google_clean, harvest_clean
-    if harvest_clean and harvest_sim >= 35:
-        return harvest_clean, harvest_dom, google_clean, harvest_clean
+
+    # 2) No usable Harvest → Google (already filtered for noise / content-backed).
     if google_clean:
         return google_clean, google_dom, google_clean, harvest_clean
+
+    # 3) Weak Harvest fallback (non-noise but low name↔domain similarity).
+    if harvest_clean and harvest_sim >= 20:
+        return harvest_clean, harvest_dom, google_clean, harvest_clean
+
     return None, None, None, harvest_clean
 
 
