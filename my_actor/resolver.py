@@ -11,9 +11,8 @@ from .ai_resolver import resolve_with_ai
 from .google_search import (
     WEBSITE_QUERY,
     build_domain_fallback_query,
-    build_linkedin_query,
-    build_website_query,
-    evidences_for_query,
+    build_initial_queries,
+    evidences_for_company,
     extract_domains_from_text,
     filter_linkedin_evidences,
     filter_website_evidences,
@@ -26,6 +25,7 @@ from .harvest import (
     harvest_headquarters_fields,
     harvest_industry,
     harvest_logo_url,
+    harvest_phone,
 )
 from .models import (
     ActorSettings,
@@ -269,7 +269,7 @@ def _result_from_selection(
         headquarters_region=hq_fields["headquarters_region"],
         headquarters_country=hq_fields["headquarters_country"],
         locations=element.get("locations") if element else None,
-        phone=element.get("phone") if element else None,
+        phone=harvest_phone(element if element else None),
         logo=harvest_logo_url(element if element else None),
         active=element.get("active") if element else None,
         page_verified=element.get("pageVerified") if element else None,
@@ -302,13 +302,12 @@ async def resolve_company(
     google_queries_used: list[str] = []
     harvest_queries_used: list[str] = []
 
-    linkedin_q = build_linkedin_query(company.legal_name)
-    website_q = build_website_query(company.legal_name)
-    google_queries_used.extend([linkedin_q, website_q])
+    initial_queries = build_initial_queries(company.legal_name)
+    google_queries_used.extend(initial_queries)
 
     if prefetched_evidences is None:
         evidences = await run_google_searches(
-            [linkedin_q, website_q],
+            initial_queries,
             actor_id=settings.google_actor_id,
             token=settings.apify_token,
             country_code=settings.country_code,
@@ -317,10 +316,7 @@ async def resolve_company(
             batch_size=settings.batch_size,
         )
     else:
-        # Prefer evidences matching this company's queries; fall back to all if batch map missed
-        evidences = []
-        for q in (linkedin_q, website_q):
-            evidences.extend(evidences_for_query(prefetched_evidences, q))
+        evidences = evidences_for_company(prefetched_evidences, company.legal_name)
 
     linkedin_evidences = filter_linkedin_evidences(evidences)
     website_evidences = filter_website_evidences(
@@ -520,8 +516,7 @@ async def resolve_companies_batch(
     # Build initial Google query batch for all companies
     query_list: list[str] = []
     for company in companies:
-        query_list.append(build_linkedin_query(company.legal_name))
-        query_list.append(build_website_query(company.legal_name))
+        query_list.extend(build_initial_queries(company.legal_name))
 
     Actor.log.info("Running initial Google Search for %s companies (%s queries).", len(companies), len(query_list))
     all_evidences = await run_google_searches(
@@ -545,9 +540,6 @@ async def resolve_companies_batch(
                 type(exc).__name__,
             )
             result = _empty_result(company, error=type(exc).__name__, status=MatchStatus.ERROR)
-            result.google_queries_used = [
-                build_linkedin_query(company.legal_name),
-                build_website_query(company.legal_name),
-            ]
+            result.google_queries_used = build_initial_queries(company.legal_name)
         results.append(result)
     return results

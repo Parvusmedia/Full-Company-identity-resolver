@@ -104,6 +104,23 @@ async def enrich_candidates_with_harvest(
     return results
 
 
+def harvest_phone(element: dict[str, Any] | None) -> str | None:
+    if not element:
+        return None
+    phone = element.get("phone")
+    if isinstance(phone, str):
+        return phone.strip() or None
+    if isinstance(phone, dict):
+        number = phone.get("number") or phone.get("phoneNumber") or phone.get("value")
+        extension = phone.get("extension")
+        if number and extension:
+            return f"{number} ext. {extension}"
+        return str(number).strip() if number else None
+    if isinstance(phone, list) and phone:
+        return harvest_phone({"phone": phone[0]})
+    return None
+
+
 def harvest_logo_url(element: dict[str, Any] | None) -> str | None:
     if not element:
         return None

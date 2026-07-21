@@ -97,14 +97,66 @@ def compute_pre_score(
     return _clamp(score), reasons
 
 
+def _host_without_www(url_or_host: str | None) -> str | None:
+    if not url_or_host:
+        return None
+    value = url_or_host.strip()
+    if "://" in value:
+        from urllib.parse import urlparse
+
+        value = urlparse(value).netloc or value
+    return value.lower().removeprefix("www.") or None
+
+
+def _looks_like_geographic_branch(name: str | None, universal: str | None, core: str) -> bool:
+    """Detect city/office pages like 'Albroksa Vigo' when core name has no city token."""
+    blob = normalize_text(f"{name or ''} {(universal or '').replace('-', ' ')}")
+    if not blob:
+        return False
+    core_tokens = set(core.split())
+    extra = [t for t in blob.split() if t not in core_tokens and len(t) >= 4]
+    # Common Spanish place-name tokens often used in branch LinkedIn pages.
+    place_hints = {
+        "madrid",
+        "barcelona",
+        "valencia",
+        "sevilla",
+        "zaragoza",
+        "malaga",
+        "bilbao",
+        "vigo",
+        "aviles",
+        "avilés",
+        "gijon",
+        "oviedo",
+        "alicante",
+        "murcia",
+        "granada",
+        "cordoba",
+        "valladolid",
+        "vitoria",
+        "pamplona",
+        "santander",
+        "palma",
+        "las",
+        "palmas",
+        "tenerife",
+        "delegacion",
+        "delegación",
+        "sucursal",
+        "oficina",
+    }
+    return any(normalize_text(t) in place_hints for t in extra)
+
+
 def compute_final_score(
     company: CompanyInput,
     candidate: LinkedInCandidate,
     website_candidates: list[WebsiteCandidate],
 ) -> tuple[float, list[str], Relationship]:
     reasons = list(candidate.pre_score_reasons)
-    score = candidate.pre_score * 0.45
-    reasons.append(f"pre_score_contribution={candidate.pre_score * 0.45:.1f}")
+    score = candidate.pre_score * 0.35
+    reasons.append(f"pre_score_contribution={candidate.pre_score * 0.35:.1f}")
     relationship = Relationship.UNKNOWN
 
     element = candidate.harvest or {}
@@ -125,29 +177,47 @@ def compute_final_score(
 
     if harvest_name:
         name_sim = name_similarity(core, str(harvest_name))
-        score += name_sim * 0.25
+        score += name_sim * 0.20
         reasons.append(f"harvest_name_similarity={name_sim:.1f}")
         if name_sim >= 90:
             relationship = Relationship.SAME_ENTITY
-        elif name_sim >= 75:
+        elif name_sim >= 70:
             relationship = Relationship.COMMERCIAL_BRAND
         elif name_sim < 45:
             relationship = Relationship.REQUIRES_REVIEW
 
     if universal:
         uni_sim = name_similarity(core, str(universal).replace("-", " "))
-        score += uni_sim * 0.10
+        score += uni_sim * 0.20
         reasons.append(f"universal_name_similarity={uni_sim:.1f}")
+        if uni_sim >= 90 and relationship in {Relationship.UNKNOWN, Relationship.REQUIRES_REVIEW, Relationship.COMMERCIAL_BRAND}:
+            relationship = Relationship.COMMERCIAL_BRAND
 
     google_domain = None
+    google_host = None
     if website_candidates:
         google_domain = website_candidates[0].domain
+        google_host = _host_without_www(website_candidates[0].url)
     harvest_domain = extract_registrable_domain(str(harvest_website) if harvest_website else None)
+    harvest_host = _host_without_www(str(harvest_website) if harvest_website else None)
 
     if google_domain and harvest_domain:
         if google_domain == harvest_domain:
-            score += 18.0
-            reasons.append("exact_domain_match")
+            # Prefer apex / www over city subdomains (vigo.albroksa.com).
+            if harvest_host and google_host and harvest_host == google_host:
+                score += 20.0
+                reasons.append("exact_host_match")
+            elif harvest_host and harvest_host.count(".") == google_domain.count("."):
+                # apex host equals registrable domain
+                score += 18.0
+                reasons.append("exact_domain_match")
+            elif harvest_host and harvest_host.endswith("." + google_domain):
+                score += 8.0
+                reasons.append("subdomain_domain_match")
+                relationship = Relationship.BRANCH
+            else:
+                score += 14.0
+                reasons.append("exact_domain_match")
             if relationship in {Relationship.UNKNOWN, Relationship.REQUIRES_REVIEW}:
                 relationship = Relationship.SAME_ENTITY
         else:
@@ -190,11 +260,21 @@ def compute_final_score(
         score += 2.0
         reasons.append("industry_present")
     if employee_count:
-        score += 2.0
-        reasons.append("employees_present")
+        try:
+            emp_i = int(employee_count)
+        except (TypeError, ValueError):
+            emp_i = 0
+        if emp_i > 0:
+            score += min(4.0, 1.0 + (emp_i ** 0.5) / 5.0)
+            reasons.append("employees_present")
     if followers:
-        score += 1.5
-        reasons.append("followers_present")
+        try:
+            fol_i = int(followers)
+        except (TypeError, ValueError):
+            fol_i = 0
+        if fol_i > 0:
+            score += min(3.0, 0.5 + (fol_i ** 0.5) / 20.0)
+            reasons.append("followers_present")
     if active is True:
         score += 3.0
         reasons.append("page_active")
@@ -205,11 +285,15 @@ def compute_final_score(
         score += 4.0
         reasons.append("page_verified")
 
-    if contains_branch_terms(harvest_name, description, tagline, candidate.linkedin_url):
-        score -= 10.0
+    # Only treat name/URL as branch signals. Descriptions often mention the company's own network.
+    branch_hit = contains_branch_terms(harvest_name, str(universal) if universal else None, candidate.linkedin_url)
+    geo_branch = _looks_like_geographic_branch(str(harvest_name) if harvest_name else None, str(universal) if universal else None, core)
+    if branch_hit or geo_branch:
+        score -= 16.0 if geo_branch else 10.0
         reasons.append("possible_branch_or_subsidiary")
-        if relationship == Relationship.SAME_ENTITY:
-            relationship = Relationship.BRANCH
+        relationship = Relationship.BRANCH
+    elif relationship == Relationship.UNKNOWN and name_similarity(core, str(harvest_name or "")) >= 50:
+        relationship = Relationship.COMMERCIAL_BRAND
 
     return _clamp(score), reasons, relationship
 

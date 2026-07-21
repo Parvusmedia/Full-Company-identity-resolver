@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import unquote, urlparse, urlunparse
 
 LEGAL_FORMS = [
     r"sociedad\s+de\s+responsabilidad\s+limitada\s+unipersonal",
@@ -21,28 +21,29 @@ LEGAL_FORMS = [
     r"sociedad\s+colectiva",
     r"sociedad\s+comanditaria",
     r"comunidad\s+de\s+bienes",
-    r"s\.?\s*l\.?\s*u\.?",
-    r"s\.?\s*l\.?\s*p\.?",
-    r"s\.?\s*l\.?\s*l\.?",
-    r"s\.?\s*a\.?\s*u\.?",
-    r"s\.?\s*a\.?\s*l\.?",
-    r"s\.?\s*coop\.?",
-    r"s\.?\s*com\.?",
-    r"s\.?\s*c\.?",
-    r"s\.?\s*l\.?",
-    r"s\.?\s*a\.?",
-    r"slu\b",
-    r"slp\b",
-    r"sll\b",
-    r"sau\b",
-    r"sal\b",
-    r"sl\b",
-    r"sa\b",
-    r"cb\b",
+    r"\bs\.?\s*l\.?\s*u\.?\b",
+    r"\bs\.?\s*l\.?\s*p\.?\b",
+    r"\bs\.?\s*l\.?\s*l\.?\b",
+    r"\bs\.?\s*a\.?\s*u\.?\b",
+    r"\bs\.?\s*a\.?\s*l\.?\b",
+    r"\bs\.?\s*coop\.?\b",
+    r"\bs\.?\s*com\.?\b",
+    r"\bs\.?\s*c\.?\b",
+    r"\bs\.?\s*l\.?\b",
+    r"\bs\.?\s*a\.?\b",
+    r"\bslu\b",
+    r"\bslp\b",
+    r"\bsll\b",
+    r"\bsau\b",
+    r"\bsal\b",
+    r"\bsl\b",
+    r"\bsa\b",
+    r"\bcb\b",
 ]
 
 _LEGAL_FORM_RE = re.compile(
-    r"(?:,?\s*(?:y\s+)?(?:" + "|".join(LEGAL_FORMS) + r"))+\.?$",
+    # Require a separator so we never strip letters from words like "Empresa".
+    r"(?:(?:\s+|,)\s*(?:y\s+)?(?:" + "|".join(LEGAL_FORMS) + r"))+\.?$",
     re.IGNORECASE,
 )
 
@@ -61,7 +62,6 @@ BRANCH_TERMS = (
     "filial",
     "branch",
     "subsidiary",
-    "sede",
 )
 
 
@@ -158,11 +158,43 @@ def should_reject_linkedin_url(url: str) -> bool:
     return not is_linkedin_company_url(url)
 
 
+def _linkedin_host_ok(host: str) -> bool:
+    host = (host or "").lower().removeprefix("www.")
+    return bool(_LINKEDIN_COMPANY_RE.match(host)) or host.endswith("linkedin.com")
+
+
+def company_url_from_linkedin_post(url: str) -> str | None:
+    """Derive /company/<slug>/ from a LinkedIn post authored by a company page."""
+    if not url:
+        return None
+    try:
+        parsed = urlparse(unquote(url.strip()) if "://" in url else f"https://{unquote(url.strip())}")
+    except Exception:
+        return None
+    if not _linkedin_host_ok(parsed.netloc):
+        return None
+    parts = [p for p in parsed.path.split("/") if p]
+    if len(parts) < 2 or parts[0].lower() != "posts":
+        return None
+    # posts/<company-or-person-slug>_activity-...
+    raw_slug = parts[1]
+    slug = raw_slug.split("_", 1)[0].strip()
+    if not slug or len(slug) < 2:
+        return None
+    # Person posts often look similar; keep slug and let scoring/Harvest decide.
+    return urlunparse(("https", "www.linkedin.com", f"/company/{slug}/", "", "", ""))
+
+
 def normalize_linkedin_company_url(url: str) -> str | None:
     """Normalize to https://www.linkedin.com/company/<slug>/."""
     if not url:
         return None
-    raw = url.strip()
+    raw = unquote(url.strip())
+    # Allow deriving a company URL from a company-authored post.
+    if "/posts/" in raw.lower():
+        derived = company_url_from_linkedin_post(raw)
+        if derived:
+            return derived
     if should_reject_linkedin_url(raw):
         return None
     parsed = urlparse(raw if "://" in raw else f"https://{raw}")
@@ -171,7 +203,7 @@ def normalize_linkedin_company_url(url: str) -> str | None:
     company_idx = next((i for i, p in enumerate(parts) if p.lower() == "company"), None)
     if company_idx is None or company_idx + 1 >= len(parts):
         return None
-    slug = parts[company_idx + 1]
+    slug = unquote(parts[company_idx + 1])
     if not slug or slug.lower() in {"jobs", "posts", "life", "people", "about"}:
         return None
     path = f"/company/{slug}/"

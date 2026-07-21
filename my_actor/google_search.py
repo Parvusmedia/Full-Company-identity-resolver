@@ -9,12 +9,36 @@ from urllib.parse import urlparse
 from apify import Actor
 
 from .models import GoogleEvidence
-from .normalization import extract_registrable_domain, is_linkedin_company_url, normalize_linkedin_company_url
+from .normalization import (
+    extract_registrable_domain,
+    is_linkedin_company_url,
+    normalize_linkedin_company_url,
+    remove_legal_forms,
+)
 
 
 LINKEDIN_QUERY = "linkedin"
 WEBSITE_QUERY = "website"
 DOMAIN_FALLBACK_QUERY = "domain_fallback"
+CORE_LINKEDIN_QUERY = "core_linkedin"
+
+_WEBSITE_NOISE_DOMAINS = {
+    "zoominfo.com",
+    "coursehero.com",
+    "facebook.com",
+    "twitter.com",
+    "x.com",
+    "instagram.com",
+    "youtube.com",
+    "wikipedia.org",
+    "crunchbase.com",
+    "bloomberg.com",
+    "yumpu.com",
+    "slideshare.net",
+    "scribd.com",
+    "emis.com",
+    "dnb.com",
+}
 
 
 def build_linkedin_query(legal_name: str) -> str:
@@ -23,6 +47,23 @@ def build_linkedin_query(legal_name: str) -> str:
 
 def build_website_query(legal_name: str) -> str:
     return f'"{legal_name}" website'
+
+
+def build_core_linkedin_query(legal_name: str) -> str | None:
+    """Extra LinkedIn query using the name without legal-form suffixes."""
+    core = remove_legal_forms(legal_name).strip()
+    if not core or core.casefold() == legal_name.strip().casefold():
+        return None
+    return f'"{core}" linkedin'
+
+
+def build_initial_queries(legal_name: str) -> list[str]:
+    """Initial Google queries for a company (legal + optional core-name LinkedIn)."""
+    queries = [build_linkedin_query(legal_name), build_website_query(legal_name)]
+    core_q = build_core_linkedin_query(legal_name)
+    if core_q:
+        queries.append(core_q)
+    return queries
 
 
 def build_domain_fallback_query(domain: str) -> str:
@@ -34,11 +75,10 @@ def classify_query_type(query: str) -> str:
     q = query.lower().strip()
     if q.startswith("site:linkedin.com/company"):
         return DOMAIN_FALLBACK_QUERY
-    if q.endswith(" linkedin") or ' linkedin"' in q or q.endswith("linkedin"):
-        if "website" not in q:
-            return LINKEDIN_QUERY
     if "website" in q:
         return WEBSITE_QUERY
+    if "linkedin" in q:
+        return LINKEDIN_QUERY
     return "other"
 
 
@@ -108,10 +148,11 @@ def parse_google_dataset_items(items: list[dict[str, Any]]) -> list[GoogleEviden
 def filter_linkedin_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvidence]:
     out: list[GoogleEvidence] = []
     for ev in evidences:
-        if not is_linkedin_company_url(ev.url):
-            continue
         normalized = normalize_linkedin_company_url(ev.url)
         if not normalized:
+            # Keep only true /company/ URLs; posts may still derive a company URL above.
+            if not is_linkedin_company_url(ev.url):
+                continue
             continue
         out.append(ev.model_copy(update={"url": normalized}))
     return out
@@ -120,13 +161,39 @@ def filter_linkedin_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvi
 def filter_website_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvidence]:
     out: list[GoogleEvidence] = []
     for ev in evidences:
-        host = (urlparse(ev.url).netloc or "").lower()
+        host = (urlparse(ev.url).netloc or "").lower().removeprefix("www.")
         if "linkedin.com" in host:
             continue
-        if any(bad in host for bad in ("facebook.com", "twitter.com", "x.com", "instagram.com", "youtube.com")):
+        domain = extract_registrable_domain(ev.url) or host
+        if domain in _WEBSITE_NOISE_DOMAINS or any(domain.endswith(f".{d}") for d in _WEBSITE_NOISE_DOMAINS):
+            continue
+        # Government gazettes / random PDFs are weak website signals
+        path = urlparse(ev.url).path.lower()
+        if path.endswith(".pdf"):
             continue
         out.append(ev)
     return out
+
+
+def evidences_for_company(evidences: list[GoogleEvidence], legal_name: str) -> list[GoogleEvidence]:
+    """Select evidences belonging to a company by legal/core name in the query text."""
+    legal = (legal_name or "").strip()
+    core = remove_legal_forms(legal).strip()
+    out: list[GoogleEvidence] = []
+    for ev in evidences:
+        q = ev.query or ""
+        if legal and legal in q:
+            out.append(ev)
+            continue
+        if core and core in q:
+            out.append(ev)
+            continue
+    return out
+
+
+def evidences_for_query(evidences: list[GoogleEvidence], query: str) -> list[GoogleEvidence]:
+    target = query.strip()
+    return [e for e in evidences if e.query.strip() == target]
 
 
 async def run_google_searches(
@@ -186,20 +253,23 @@ async def run_google_searches(
         except Exception as exc:  # noqa: BLE001
             Actor.log.exception("Google Search Actor call failed: %s", type(exc).__name__)
             continue
-        if not run or not run.get("defaultDatasetId"):
+
+        dataset_id = None
+        if run is not None:
+            # apify-client >=3 returns a Pydantic Run model; older code paths may yield a dict.
+            dataset_id = getattr(run, "default_dataset_id", None)
+            if dataset_id is None and isinstance(run, dict):
+                dataset_id = run.get("defaultDatasetId") or run.get("default_dataset_id")
+
+        if not dataset_id:
             Actor.log.warning("Google Search Actor returned no dataset.")
             continue
-        dataset = client.dataset(run["defaultDatasetId"])
+        dataset = client.dataset(dataset_id)
         async for item in dataset.iterate_items():
             if isinstance(item, dict):
                 all_items.append(item)
 
     return parse_google_dataset_items(all_items)
-
-
-def evidences_for_query(evidences: list[GoogleEvidence], query: str) -> list[GoogleEvidence]:
-    target = query.strip()
-    return [e for e in evidences if e.query.strip() == target]
 
 
 _DOMAIN_IN_TEXT_RE = re.compile(
