@@ -668,7 +668,7 @@ def test_efficiency_defaults_and_skip() -> None:
 
     settings = settings_from_input({}, env_token=None, env_harvest=None, env_openai=None)
     assert settings.fallback_google_maps is True
-    assert settings.max_website_probes == 1
+    assert settings.max_website_probes == 2
     assert settings.skip_if_good_website is True
     assert settings.defer_core_linkedin is True
     assert settings.harvest_pre_score_gap == 15
@@ -1014,6 +1014,43 @@ def test_match_guards_block_foreign_twins_and_suppressions() -> None:
     print("OK match guards: Peru twin suppressed, local Asesoría ranks higher")
 
 
+def test_directory_snippet_website_and_short_acronym_tokens() -> None:
+    """EGM: keep short brand token; mine egmseguros.com from directory snippet."""
+    from my_actor.google_search import website_evidences_from_directory_snippets
+    from my_actor.normalization import distinctive_name_tokens
+    from my_actor.scoring import build_website_candidates
+
+    assert "egm" in distinctive_name_tokens("Egm Correduria De Seguros")
+    assert "mk2" in distinctive_name_tokens("Mk2 Correduria De Seguros S.L")
+
+    legal = "Egm Correduria De Seguros"
+    dir_ev = [
+        GoogleEvidence(
+            query="Egm Correduria De Seguros",
+            query_type="website",
+            position=1,
+            title="E G M Correduria De Seguros Sl - Empresite",
+            snippet="Su teléfono es 914588421 y su página web es www.egmseguros.com. CNAE 6622",
+            url="https://empresite.eleconomista.es/EGM-CORREDURIA-SEGUROS.html",
+            domain="empresite.eleconomista.es",
+        ),
+        GoogleEvidence(
+            query="Egm Correduria De Seguros",
+            query_type="website",
+            position=2,
+            title="EGM en QDQ",
+            snippet="Ficha EGM",
+            url="https://www.qdq.com/egm",
+            domain="qdq.com",
+        ),
+    ]
+    cited = website_evidences_from_directory_snippets(dir_ev, legal, country_code="es")
+    assert any((e.domain or "") == "egmseguros.com" for e in cited)
+    cands = build_website_candidates(cited, legal, country_code="es", sector_hints=frozenset({"insurance"}))
+    assert cands and cands[0].domain == "egmseguros.com"
+    print("OK directory snippet → egmseguros.com; short acronym tokens kept")
+
+
 def main() -> None:
     test_json_files()
     test_parse_queries()
@@ -1037,6 +1074,7 @@ def main() -> None:
     test_batch_es_rejects_directories_and_foreign_twins()
     test_country_relative_tld_not_spain_hardcoded()
     test_match_guards_block_foreign_twins_and_suppressions()
+    test_directory_snippet_website_and_short_acronym_tokens()
     print("\nAll local checks passed.")
 
 

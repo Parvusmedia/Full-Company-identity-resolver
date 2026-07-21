@@ -527,16 +527,25 @@ def _normalize_qualifier_set(tokens: set[str]) -> set[str]:
 
 
 def distinctive_name_tokens(legal_or_core: str) -> list[str]:
-    """Tokens useful to confirm a page refers to this company (drop weak geographic/legal words)."""
+    """Tokens useful to confirm a page refers to this company (drop weak geographic/legal words).
+
+    Short acronyms (EGM, MK2, AGA) are kept only when no longer distinctive token
+    remains — otherwise ``egmseguros.com`` / Maps place titles never match.
+    """
     core = core_name(legal_or_core) if legal_or_core else ""
     out: list[str] = []
+    short_acronyms: list[str] = []
     for token in core.split():
-        if len(token) < 4:
-            continue
         if token in _WEAK_NAME_TOKENS:
             continue
+        if len(token) < 2:
+            continue
+        if len(token) < 4:
+            if token.isalnum():
+                short_acronyms.append(token)
+            continue
         out.append(token)
-    return out
+    return out or short_acronyms
 
 
 _REGISTRY_TITLE_MARKERS = (

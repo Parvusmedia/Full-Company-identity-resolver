@@ -27,6 +27,12 @@ from .scoring import name_similarity
 def build_maps_search_query(legal_name: str, *, city: str | None = None, province: str | None = None) -> str:
     core = remove_legal_forms(legal_name).strip() or legal_name.strip()
     parts = [core]
+    # Soft sector cue when the legal name is a short acronym without "seguros"
+    # (helps Maps disambiguate EGM / MK2 without changing branded queries).
+    low = normalize_text(core)
+    if "seguro" not in low and "corredur" not in low and "broker" not in low and "insurance" not in low:
+        if len(distinctive_name_tokens(legal_name)) <= 1:
+            parts.append("correduria seguros")
     if city and city.strip():
         parts.append(city.strip())
     elif province and province.strip():

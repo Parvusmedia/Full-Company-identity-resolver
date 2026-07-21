@@ -21,6 +21,7 @@ from .google_search import (
     filter_website_evidences,
     run_google_searches,
     website_candidate_from_ai_overview,
+    website_evidences_from_directory_snippets,
 )
 from .harvest import (
     enrich_candidates_with_harvest,
@@ -138,7 +139,7 @@ def settings_from_input(raw_input: dict[str, Any], *, env_token: str | None, env
         max_website_probes=int(
             raw_input["max_website_probes"]
             if raw_input.get("max_website_probes") is not None
-            else 1
+            else 2
         ),
         fallback_google_maps=bool(raw_input.get("fallback_google_maps", True)),
         google_maps_actor_id=raw_input.get("google_maps_actor_id") or "compass/crawler-google-places",
@@ -613,6 +614,26 @@ async def resolve_company(
     sector_hints = collect_sector_hints_from_evidences(company.legal_name, website_query_evidences)
     # Never fall back to LinkedIn SERP URLs as websites — that invents false domains.
     website_evidences = filter_website_evidences(website_query_evidences)
+    # Recover official sites cited inside directory snippets (egmseguros.com on eInforma).
+    cited = website_evidences_from_directory_snippets(
+        website_query_evidences,
+        company.legal_name,
+        country_code=settings.country_code,
+    )
+    if cited:
+        seen_doms = {e.domain for e in website_evidences if e.domain}
+        added: list[str] = []
+        for ev in cited:
+            if ev.domain and ev.domain not in seen_doms:
+                website_evidences.append(ev)
+                seen_doms.add(ev.domain)
+                added.append(ev.domain)
+        if added:
+            Actor.log.info(
+                "Directory-cited websites for %s → %s",
+                core_name(company.legal_name) or company.legal_name,
+                ", ".join(added),
+            )
     website_candidates = build_website_candidates(
         website_evidences,
         company.legal_name,

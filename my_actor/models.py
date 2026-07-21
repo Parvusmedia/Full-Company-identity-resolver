@@ -73,7 +73,7 @@ class ActorSettings(BaseModel):
     batch_size: int = 20
     debug: bool = False
     validate_websites: bool = True
-    max_website_probes: int = 1
+    max_website_probes: int = 2
     # Last resort after Google Search + AI Overview found no publishable website.
     fallback_google_maps: bool = True
     google_maps_actor_id: str = "compass/crawler-google-places"

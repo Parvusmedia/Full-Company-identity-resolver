@@ -14,7 +14,9 @@ from .normalization import (
     distinctive_name_tokens,
     domain_label,
     extract_registrable_domain,
+    is_insurer_portal_domain,
     is_linkedin_company_url,
+    is_mismatched_country_domain,
     is_noise_website_domain,
     normalize_homepage_url,
     normalize_linkedin_company_url,
@@ -440,6 +442,74 @@ def filter_website_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvid
         # Keep original URL so path editorial checks still work in scoring;
         # homepage normalization happens when building/selecting candidates.
         out.append(ev.model_copy(update={"domain": domain}))
+    return out
+
+
+_DIR_WEBSITE_PATTERNS = (
+    re.compile(
+        r"(?:pagina\s+web|p[aá]gina\s+web|sitio\s+web|web\s*(?:oficial)?|website|homepage)"
+        r"\s*(?:es|:|=)?\s*(?:https?://)?(?:www\.)?([a-z0-9][a-z0-9.-]{2,}\.[a-z]{2,})",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:https?://)?(?:www\.)?([a-z0-9][a-z0-9.-]*[a-z0-9]\.(?:es|com|net|org|eu))\b",
+        re.IGNORECASE,
+    ),
+)
+
+
+def website_evidences_from_directory_snippets(
+    evidences: list[GoogleEvidence],
+    legal_name: str,
+    *,
+    country_code: str | None = None,
+) -> list[GoogleEvidence]:
+    """Mine official websites cited inside directory/registry snippets.
+
+    eInforma/Empresite often say ``su página web es www.egmseguros.com`` while
+    the result URL itself is noise. Those citations are high-signal when the
+    domain matches brand tokens — without accepting the directory host.
+    """
+    brands = distinctive_name_tokens(legal_name)
+    out: list[GoogleEvidence] = []
+    seen: set[str] = set()
+    for ev in evidences:
+        src_domain = extract_registrable_domain(ev.url) or (ev.domain or "")
+        if not src_domain or not is_noise_website_domain(src_domain):
+            # Only harvest from directory/noise rows; organic brand pages are
+            # already handled by filter_website_evidences.
+            continue
+        blob = f"{ev.title or ''} {ev.snippet or ''}"
+        for pat in _DIR_WEBSITE_PATTERNS:
+            for match in pat.finditer(blob):
+                raw = match.group(1).lower().rstrip(".,);")
+                domain = extract_registrable_domain(raw) or raw
+                if not domain or domain in seen:
+                    continue
+                if is_noise_website_domain(domain):
+                    continue
+                if is_insurer_portal_domain(domain, legal_name):
+                    continue
+                if is_mismatched_country_domain(domain, country_code):
+                    continue
+                label = domain_label(domain) or ""
+                brand_hit = any(b in label for b in brands) if brands else False
+                # Require brand in domain, or strong name↔label similarity.
+                if not brand_hit and name_similarity(core_name(legal_name), label) < 70:
+                    continue
+                seen.add(domain)
+                homepage = normalize_homepage_url(f"https://{domain}") or f"https://www.{domain}/"
+                out.append(
+                    GoogleEvidence(
+                        query=ev.query,
+                        query_type=WEBSITE_QUERY,
+                        position=ev.position,
+                        title=ev.title or f"Website cited on {src_domain}",
+                        snippet=(ev.snippet or "")[:240],
+                        url=homepage,
+                        domain=domain,
+                    )
+                )
     return out
 
 
