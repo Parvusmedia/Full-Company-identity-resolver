@@ -62,7 +62,7 @@ from .scoring import (
     name_similarity,
 )
 from .maps_fallback import run_google_maps_fallback
-from .website_probe import validate_website_candidates
+from .website_probe import discover_linkedin_from_website, validate_website_candidates
 
 
 def parse_input_companies(raw_input: dict[str, Any]) -> list[CompanyInput]:
@@ -532,10 +532,55 @@ async def resolve_company(
             website_candidates = maps_candidates
 
     candidates = _dedupe_linkedin_candidates(linkedin_evidences)
+
+    # Cheap LinkedIn discovery: scrape official website for /company/ links
+    # (footer/header social icons). Runs only when Google found none.
+    if not candidates and website_candidates:
+        top_site = website_candidates[0]
+        li_from_site: list[str] = []
+        probe = top_site.homepage_probe if isinstance(top_site.homepage_probe, dict) else {}
+        raw_lis = probe.get("linkedin_urls") if probe else None
+        if isinstance(raw_lis, list) and raw_lis:
+            li_from_site = [str(u) for u in raw_lis if u]
+        else:
+            Actor.log.info(
+                "No LinkedIn from Google; scanning website HTML for %s → %s",
+                core_name(company.legal_name) or company.legal_name,
+                top_site.url,
+            )
+            li_from_site = await discover_linkedin_from_website(top_site.url)
+        for li_url in li_from_site:
+            normalized = normalize_linkedin_company_url(li_url)
+            if not normalized:
+                continue
+            google_queries_used.append(f"website_linkedin:{top_site.domain or top_site.url}")
+            candidates.append(
+                LinkedInCandidate(
+                    linkedin_url=normalized,
+                    universal_name_guess=slug_from_linkedin_url(normalized),
+                    google_evidences=[
+                        GoogleEvidence(
+                            query=f"website:{top_site.url}",
+                            query_type="website_linkedin",
+                            position=1,
+                            title="LinkedIn link on official website",
+                            snippet=f"Found on {top_site.url}",
+                            url=normalized,
+                            domain="linkedin.com",
+                        )
+                    ],
+                    pre_score=70.0,
+                    pre_score_reasons=["linkedin_found_on_official_website"],
+                )
+            )
+            Actor.log.info("Website LinkedIn discovery → %s", normalized)
+            break  # one company page is enough
+
     for cand in candidates:
-        pre_score, reasons = compute_pre_score(company, cand)
-        cand.pre_score = pre_score
-        cand.pre_score_reasons = reasons
+        if not cand.pre_score_reasons:
+            pre_score, reasons = compute_pre_score(company, cand)
+            cand.pre_score = pre_score
+            cand.pre_score_reasons = reasons
 
     # Sort by pre_score descending; stable list avoids score-keyed dict collisions
     candidates.sort(key=lambda c: c.pre_score, reverse=True)

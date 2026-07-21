@@ -175,6 +175,9 @@ def company_url_from_linkedin_post(url: str) -> str | None:
 
 def normalize_linkedin_company_url(url: str) -> str | None:
     """Normalize to https://www.linkedin.com/company/<slug>/."""
+    import unicodedata
+    from urllib.parse import quote
+
     if not url:
         return None
     raw = unquote(url.strip())
@@ -190,6 +193,11 @@ def normalize_linkedin_company_url(url: str) -> str | None:
     slug = unquote(parts[company_idx + 1])
     if not slug or slug.lower() in {"jobs", "posts", "life", "people", "about"}:
         return None
+    # Prefer ASCII slug (LinkedIn canonical); keep unicode if no ASCII fold.
+    folded = unicodedata.normalize("NFKD", slug)
+    ascii_slug = "".join(c for c in folded if not unicodedata.combining(c))
+    if ascii_slug and all(ord(c) < 128 for c in ascii_slug):
+        slug = ascii_slug
     path = f"/company/{slug}/"
     return urlunparse(("https", "www.linkedin.com", path, "", "", ""))
 

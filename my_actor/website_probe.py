@@ -38,20 +38,28 @@ class _HomeHTMLParser(HTMLParser):
         self._in_script = False
         self._in_style = False
         self.body_parts: list[str] = []
+        self.hrefs: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         t = tag.lower()
+        attr = {k.lower(): (v or "") for k, v in attrs}
         if t == "title":
             self._in_title = True
         elif t in {"script", "style", "noscript"}:
             self._in_script = True
+        elif t == "a":
+            href = (attr.get("href") or "").strip()
+            if href:
+                self.hrefs.append(href)
         elif t == "meta":
-            attr = {k.lower(): (v or "") for k, v in attrs}
             name = (attr.get("name") or attr.get("property") or "").lower()
             if name in {"description", "og:description", "twitter:description"}:
                 content = attr.get("content") or ""
                 if content and not self.meta_description:
                     self.meta_description = content
+            # Some sites put social URLs in og tags
+            if name in {"og:see_also", "al:android:url"} and "linkedin.com" in (attr.get("content") or "").lower():
+                self.hrefs.append(attr.get("content") or "")
 
     def handle_endtag(self, tag: str) -> None:
         t = tag.lower()
@@ -79,6 +87,7 @@ class HomepageProbe:
     title: str | None = None
     meta_description: str | None = None
     text_sample: str | None = None
+    linkedin_urls: list[str] | None = None
     ok: bool = False
     error: str | None = None
     score_delta: float = 0.0
@@ -86,20 +95,58 @@ class HomepageProbe:
     reject: bool = False
 
 
-def parse_homepage_html(html: str) -> tuple[str | None, str | None, str]:
+_LINKEDIN_HREF_RE = re.compile(
+    r"https?://(?:[a-z]{2,3}\.)?linkedin\.com/[^\s\"'<>]+",
+    re.IGNORECASE,
+)
+
+
+def extract_linkedin_company_urls_from_html(html: str) -> list[str]:
+    """Return unique normalized LinkedIn /company/ URLs found in page HTML."""
+    from .normalization import normalize_linkedin_company_url
+
+    if not html:
+        return []
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def _add(raw: str) -> None:
+        normalized = normalize_linkedin_company_url(raw)
+        if not normalized or normalized in seen:
+            return
+        seen.add(normalized)
+        found.append(normalized)
+
+    parser = _HomeHTMLParser()
+    try:
+        parser.feed(html)
+        parser.close()
+        for href in parser.hrefs:
+            if "linkedin.com" in href.lower():
+                _add(href)
+    except Exception:
+        pass
+    # Regex fallback for JSON-LD / inline scripts the tag parser skips
+    for match in _LINKEDIN_HREF_RE.findall(html):
+        if "/company/" in match.lower():
+            _add(match)
+    return found
+
+
+def parse_homepage_html(html: str) -> tuple[str | None, str | None, str, list[str]]:
     parser = _HomeHTMLParser()
     try:
         parser.feed(html)
         parser.close()
     except Exception:
-        # Fallback: crude strip
         title = None
         text = _WS_RE.sub(" ", _TAG_RE.sub(" ", html))[:4000]
-        return title, None, text
+        return title, None, text, extract_linkedin_company_urls_from_html(html)
     title = _WS_RE.sub(" ", " ".join(parser.title_parts)).strip() or None
     meta = parser.meta_description
     body = _WS_RE.sub(" ", " ".join(parser.body_parts)).strip()
-    return title, meta, body[:5000]
+    linkedin_urls = extract_linkedin_company_urls_from_html(html)
+    return title, meta, body[:5000], linkedin_urls
 
 
 def evaluate_homepage_probe(legal_name: str, probe: HomepageProbe) -> HomepageProbe:
@@ -203,16 +250,23 @@ async def fetch_homepage(url: str, *, timeout: float = 12.0) -> HomepageProbe:
                 probe.error = f"non_html:{ctype.split(';')[0]}"
                 return probe
             html = response.text or ""
-            title, meta, text = parse_homepage_html(html)
+            title, meta, text, linkedin_urls = parse_homepage_html(html)
             probe.final_url = str(response.url)
             probe.title = title
             probe.meta_description = meta
             probe.text_sample = text
+            probe.linkedin_urls = linkedin_urls
             probe.ok = True
             return probe
     except Exception as exc:  # noqa: BLE001
         probe.error = type(exc).__name__
         return probe
+
+
+async def discover_linkedin_from_website(url: str) -> list[str]:
+    """Fetch a website homepage and return LinkedIn /company/ URLs found on it."""
+    probe = await fetch_homepage(url)
+    return list(probe.linkedin_urls or [])
 
 
 async def validate_website_candidates(
@@ -272,6 +326,7 @@ async def validate_website_candidates(
             "reasons": reasons,
             "reject": probe.reject,
             "error": probe.error,
+            "linkedin_urls": list(probe.linkedin_urls or []),
         }
         updated = cand.model_copy(
             update={

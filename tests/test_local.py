@@ -440,7 +440,7 @@ def test_parent_page_penalty_and_no_post_derivation() -> None:
 def test_homepage_probe_rejects_global_brand_for_iberica() -> None:
     from my_actor.website_probe import HomepageProbe, evaluate_homepage_probe, parse_homepage_html
 
-    title, meta, text = parse_homepage_html(
+    title, meta, text, _li = parse_homepage_html(
         "<html><head><title>WTW - Willis Towers Watson</title>"
         "<meta name='description' content='Global advisory firm'></head>"
         "<body><h1>WTW</h1><p>Risk, benefits and brokerage worldwide.</p></body></html>"
@@ -650,6 +650,23 @@ def test_efficiency_defaults_and_skip() -> None:
     print("OK efficiency defaults + skip-if-good-website")
 
 
+def test_extract_linkedin_from_homepage_html() -> None:
+    from my_actor.website_probe import extract_linkedin_company_urls_from_html
+
+    html = """
+    <html><head><title>Atento</title></head>
+    <body>
+      <a href="https://www.linkedin.com/company/atento/">LinkedIn</a>
+      <a href="https://www.facebook.com/atento">FB</a>
+      <a href="https://www.linkedin.com/in/someone/">person</a>
+    </body></html>
+    """
+    urls = extract_linkedin_company_urls_from_html(html)
+    assert urls == ["https://www.linkedin.com/company/atento/"]
+    assert extract_linkedin_company_urls_from_html("<html></html>") == []
+    print("OK LinkedIn extraction from homepage HTML")
+
+
 def main() -> None:
     test_json_files()
     test_parse_queries()
@@ -667,6 +684,7 @@ def main() -> None:
     test_ai_overview_website_fallback()
     test_willis_quienes_somos_about_page_scoring()
     test_efficiency_defaults_and_skip()
+    test_extract_linkedin_from_homepage_html()
     print("\nAll local checks passed.")
 
 
