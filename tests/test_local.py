@@ -606,8 +606,48 @@ def test_willis_quienes_somos_about_page_scoring() -> None:
     assert cands, "expected WTW about-page to survive scoring"
     assert "wtwco.com" in (cands[0].domain or "")
     assert cands[0].url == "https://servicios-seguros.wtwco.com/"
-    assert all("willplatine" not in (c.domain or "") for c in cands)
+    # Legal-notice hits may survive at lower score; they must not beat WTW about.
+    for c in cands:
+        if "willplatine" in (c.domain or ""):
+            assert c.score < cands[0].score
     print("OK Willis quienes-somos about-page scoring")
+
+
+def test_weecover_aviso_legal_beats_startup_hub() -> None:
+    """Insurtech Solutions SL is Weecover — not Catalonia Trade & Investment."""
+    from my_actor.scoring import build_website_candidates
+    from my_actor.normalization import is_noise_website_domain
+
+    legal = "Insurtech Solutions Correduria De Seguros Sl"
+    assert is_noise_website_domain("catalonia.com")
+    evidences = [
+        GoogleEvidence(
+            query="Insurtech Solutions Correduria De Seguros",
+            query_type="website",
+            position=2,
+            title="Aviso Legal | Información Corporativa y Términos",
+            snippet=(
+                "Insurtech Solutions C. S. SL (en adelante, la Compañía), con: "
+                "Domicilio social: Via Augusta 158, 3o 1a, 08006 Barcelona"
+            ),
+            url="https://weecover.com/aviso-legal",
+            domain="weecover.com",
+        ),
+        GoogleEvidence(
+            query="Insurtech Solutions Correduria De Seguros",
+            query_type="website",
+            position=5,
+            title="Insurtech Solutions — Startup Hub Catalonia",
+            snippet="Startup hub invest in catalonia listing",
+            url="https://startupshub.catalonia.com/startup/insurtech",
+            domain="catalonia.com",
+        ),
+    ]
+    cands = build_website_candidates(evidences, legal)
+    assert cands and cands[0].domain == "weecover.com"
+    assert cands[0].url == "https://www.weecover.com/"
+    assert all(c.domain != "catalonia.com" for c in cands)
+    print("OK Weecover aviso-legal beats Catalonia startup hub")
 
 
 def test_efficiency_defaults_and_skip() -> None:
@@ -730,6 +770,7 @@ def main() -> None:
     test_homepage_probe_rejects_global_brand_for_iberica()
     test_ai_overview_website_fallback()
     test_willis_quienes_somos_about_page_scoring()
+    test_weecover_aviso_legal_beats_startup_hub()
     test_efficiency_defaults_and_skip()
     test_extract_linkedin_from_homepage_html()
     test_generic_name_prefers_matching_google_domain()

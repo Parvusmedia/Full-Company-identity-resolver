@@ -237,6 +237,12 @@ def _ai_brand_matches_domain(ai_blob: str, domain: str) -> bool:
     if "wtw" in ai_blob.split() or "willis towers watson" in ai_blob:
         if label.startswith("wtw") or label in {"willis", "willistowerswatson"}:
             return True
+    # Commercial brand named in AI (Weecover, …) matching the organic domain label.
+    # Require a reasonably specific label so short noise tokens do not bridge.
+    if len(label) >= 5 and label in ai_blob.split():
+        return True
+    if len(label) >= 5 and label.replace("-", "") in ai_blob.replace(" ", "").replace("-", ""):
+        return True
     return False
 
 

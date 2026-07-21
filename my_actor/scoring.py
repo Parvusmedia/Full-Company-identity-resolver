@@ -25,6 +25,7 @@ from .normalization import (
     token_coverage,
     website_path_looks_about,
     website_path_looks_editorial,
+    website_path_looks_legal_notice,
     _ENTITY_QUALIFIER_TOKENS,
     _normalize_qualifier_set,
 )
@@ -482,6 +483,7 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
         title_backed = False
         snippet_only_backed = False
         about_backed = False
+        legal_notice_backed = False
         editorial_only = True
         directory_listing = False
         for ev, original_url in zip(cand.google_evidences, originals.get(cand.domain, [])):
@@ -509,29 +511,26 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
                 website_path_looks_about(original_url) or about_title
             ):
                 about_backed = True
+            elif snippet_hit and not directory_listing and website_path_looks_legal_notice(original_url):
+                legal_notice_backed = True
             if not website_path_looks_editorial(original_url):
                 editorial_only = False
 
+        identity_backed = about_backed or legal_notice_backed
+
         # Reject pure editorial/deep-link hits unless the domain itself looks owned.
-        if editorial_only and domain_sim < 50 and not about_backed:
+        if editorial_only and domain_sim < 50 and not identity_backed:
             continue
 
         # Association/directory pages that list the company are not official sites.
         if directory_listing and domain_sim < 70:
             continue
 
-        # Content-backed brand domains: title mention, OR about-page whose snippet
-        # self-identifies the legal name (Willis Iberia → WTW quienes-somos).
+        # Content-backed: title mention, OR about/legal-notice self-ID snippet.
         content_backed = (
-            (title_backed and best_title_sim >= 55 and not directory_listing) or about_backed
+            (title_backed and best_title_sim >= 55 and not directory_listing) or identity_backed
         )
-        # Title can say "Insurance Manager" on an unrelated portal (bcbssc.com).
-        # Low domain similarity may only be rescued when the domain label itself
-        # carries brand tokens, or the hit is an about-page self-ID.
         label_words = (label or "").replace("-", " ").replace("_", " ")
-        # Title can say "Insurance Manager" on an unrelated portal (bcbssc.com).
-        # Low domain similarity may only be rescued when the domain/path itself
-        # carries brand tokens, or the hit is an about-page self-ID.
         path_blob = " ".join(
             (urlparse(u).path or "").replace("-", " ").replace("_", " ").replace("/", " ")
             for u in originals.get(cand.domain, [])
@@ -545,10 +544,18 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
         )
         if domain_sim < 50 and not content_backed:
             continue
-        if domain_sim < 50 and content_backed and not about_backed and not domain_looks_owned:
+        # True about pages may bridge group domains (wtwco). Title-only / weak
+        # rescues still need domain ownership (bcbssc). Legal-notice-only on a
+        # commercial brand domain (weecover) is kept and scored softer below.
+        if (
+            domain_sim < 50
+            and content_backed
+            and not about_backed
+            and not legal_notice_backed
+            and not domain_looks_owned
+        ):
             continue
-        # Snippet-only mentions never rescue a dissimilar domain (unless about_backed).
-        if domain_sim < 50 and snippet_only_backed and not title_backed and not about_backed:
+        if domain_sim < 50 and snippet_only_backed and not title_backed and not identity_backed:
             continue
 
         score = domain_sim * 0.55
@@ -556,6 +563,10 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
             score += best_title_sim * 0.45
             if about_backed:
                 score += 20.0
+            elif legal_notice_backed:
+                # Weaker than quienes-somos so third-party aviso-legal (willplatine)
+                # does not outrank the real group about page (wtwco).
+                score += 8.0
             if domain_looks_owned:
                 score += 8.0
         for ev in cand.google_evidences:
@@ -566,11 +577,14 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
                 score += 8.0
             if content_backed and ev.position is not None and ev.position <= 3:
                 score += 6.0
-        # Prefer Spanish ccTLD when the legal name is a local Iberia/Spain entity.
+        # Prefer Spanish ccTLD for local entities — but not full boost for
+        # legal-notice-only third-party hosts.
         if wants_local_es and cand.domain.endswith(".es"):
-            score += 18.0
+            if about_backed or domain_looks_owned or not legal_notice_backed:
+                score += 18.0
+            else:
+                score += 4.0
         elif wants_local_es and cand.domain.endswith((".com", ".fr", ".pt", ".de")) and domain_sim >= 80:
-            # Parent-group international domains are plausible but secondary for *Iberica.
             score -= 12.0
         cand.score = score
         cand.url = normalize_homepage_url(cand.url) or cand.url

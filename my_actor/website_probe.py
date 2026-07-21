@@ -22,6 +22,7 @@ from .normalization import (
     normalize_text,
     text_mentions_company,
     website_path_looks_about,
+    website_path_looks_legal_notice,
 )
 
 
@@ -310,6 +311,7 @@ async def validate_website_candidates(
             text_mentions_company(ev.snippet or "", legal_name)
             and (
                 website_path_looks_about(ev.url)
+                or website_path_looks_legal_notice(ev.url)
                 or any(
                     t in (ev.title or "").casefold()
                     for t in ("quiénes somos", "quienes somos", "about us", "sobre nosotros")

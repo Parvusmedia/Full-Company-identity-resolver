@@ -254,7 +254,7 @@ def _top_website_is_content_backed(website_candidates: list[Any], legal_name: st
     # (e.g. Willis Iberia → servicios-seguros.wtwco.com).
     if probe.get("ai_overview_backed"):
         return True
-    from .normalization import website_path_looks_about
+    from .normalization import website_path_looks_about, website_path_looks_legal_notice
 
     for ev in top.google_evidences:
         if text_mentions_company(ev.title or "", legal_name):
@@ -262,7 +262,7 @@ def _top_website_is_content_backed(website_candidates: list[Any], legal_name: st
         title_n = (ev.title or "").casefold()
         about_title = any(t in title_n for t in ("quiénes somos", "quienes somos", "about us", "sobre nosotros"))
         if text_mentions_company(ev.snippet or "", legal_name) and (
-            website_path_looks_about(ev.url) or about_title
+            website_path_looks_about(ev.url) or website_path_looks_legal_notice(ev.url) or about_title
         ):
             return True
     return False

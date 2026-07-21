@@ -359,17 +359,23 @@ WEBSITE_NOISE_DOMAINS = {
     "businessinsider.com",
     "medium.com",
     "substack.com",
+    # Public investment / startup directories — not company homepages.
+    "catalonia.com",
+    "startupshub.catalonia.com",
+    "accio.gencat.cat",
+    "gencat.cat",
+    "icex.es",
+    "investinspain.org",
 }
 
 _WEAK_PATH_MARKERS = (
-    "/aviso-legal",
     "/politica-de-privacidad",
     "/privacy",
     "/cookies",
     "/contacto",
     "/contact",
-    # Note: /quienes-somos, /nosotros, /about are intentional about-pages —
-    # they are strong official-site signals, not rejectable editorial paths.
+    # Note: /quienes-somos, /nosotros, /about, /aviso-legal are intentional
+    # identity pages (official self-description), not rejectable editorial paths.
     "/blog/",
     "/noticias/",
     "/news/",
@@ -378,6 +384,8 @@ _WEAK_PATH_MARKERS = (
     "/diario_borme",
     "/borme",
     "/pdfs/",
+    "/catalogo-entidades",
+    "/catalogo/",
 )
 
 _ABOUT_PATH_MARKERS = (
@@ -388,6 +396,20 @@ _ABOUT_PATH_MARKERS = (
     "/about-us",
     "/sobre-nosotros",
     "/empresa",
+)
+
+# Legal-notice pages often name the razón social (Weecover aviso-legal) but are
+# weaker than true about pages and can appear on third-party sites (willplatine).
+_LEGAL_NOTICE_PATH_MARKERS = (
+    "/aviso-legal",
+    "/avisos-legales",
+    "/informacion-corporativa",
+    "/información-corporativa",
+    "/legal-notice",
+    "/legal",
+    "/terms",
+    "/terminos",
+    "/términos",
 )
 
 
@@ -550,6 +572,11 @@ def evidence_looks_like_directory_listing(title: str | None, snippet: str | None
         "directorio de",
         "inscrita en el registro administrativo",
         "registro administrativo especial de mediadores",
+        "startup hub",
+        "startupshub",
+        "invest in catalonia",
+        "trade & investment",
+        "trade and investment",
     )):
         return True
     # Title is bare company name + snippet is a short directory card
@@ -737,6 +764,15 @@ def website_path_looks_about(url: str | None) -> bool:
     parsed = urlparse(url if "://" in url else f"https://{url}")
     path = (parsed.path or "").lower()
     return any(marker in path for marker in _ABOUT_PATH_MARKERS)
+
+
+def website_path_looks_legal_notice(url: str | None) -> bool:
+    """True for aviso-legal / corporate-terms pages that often cite the legal name."""
+    if not url:
+        return False
+    parsed = urlparse(url if "://" in url else f"https://{url}")
+    path = (parsed.path or "").lower()
+    return any(marker in path for marker in _LEGAL_NOTICE_PATH_MARKERS)
 
 
 # Commercial / group brands that appear in titles while the legal name is only
