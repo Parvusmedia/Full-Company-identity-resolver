@@ -251,16 +251,22 @@ def _sanitize_final_website(
     domain: str | None,
     google_website: str | None,
     *,
+    legal_name: str,
     content_backed: bool,
 ) -> tuple[str | None, str | None, str | None]:
     """Last-resort guard: never publish noise/garbage/foreign lookalike websites."""
+    del content_backed  # foreign/noise never get a pass from title-only backing
+    from .normalization import is_insurer_portal_domain
+
     dom = domain or extract_registrable_domain(website)
     if not website or not dom:
         return None, None, google_website
     if is_noise_website_domain(dom):
         return None, None, google_website
-    # Foreign ccTLD without content backing (about/legal/AI) → drop.
-    if is_foreign_to_spain_domain(dom) and not content_backed:
+    # Always drop foreign ccTLDs in ES runs (Cover Colombia, Eureka IT, …).
+    if is_foreign_to_spain_domain(dom):
+        return None, None, google_website
+    if is_insurer_portal_domain(dom, legal_name):
         return None, None, google_website
     return website, dom, google_website
 
@@ -317,7 +323,11 @@ def _result_from_selection(
             google_content_backed=content_backed,
         )
         website, domain, google_website = _sanitize_final_website(
-            website, domain, google_website, content_backed=content_backed
+            website,
+            domain,
+            google_website,
+            legal_name=company.legal_name,
+            content_backed=content_backed,
         )
         result = _empty_result(company, error=error, status=status)
         result.google_queries_used = google_queries_used
@@ -349,7 +359,11 @@ def _result_from_selection(
         google_content_backed=content_backed,
     )
     website, domain, google_website = _sanitize_final_website(
-        website, domain, google_website, content_backed=content_backed
+        website,
+        domain,
+        google_website,
+        legal_name=company.legal_name,
+        content_backed=content_backed,
     )
 
     # If the only website was a foreign/noise twin and we dropped it, also drop the

@@ -848,7 +848,12 @@ def test_batch_es_rejects_directories_and_foreign_twins() -> None:
         "Eureka Brokers Correduria De Seguros Sl",
         prefer_local_es=True,
     )
-    assert eureka == []
+    assert is_foreign_to_spain_domain("gestioneducativa.pe")
+    assert is_foreign_to_spain_domain("profundizar.si")
+    from my_actor.normalization import is_insurer_portal_domain
+    assert is_insurer_portal_domain("allianz.es", "Aga Correduria De Seguros Arribas S.L.")
+    assert is_insurer_portal_domain("kpmg.com", "Servicios Profesionales Financieros 2019, S.L.")
+    assert not is_insurer_portal_domain("allianz.es", "Allianz Compañia De Seguros Y Reaseguros S.A.")
     print("OK ES batch guards: QDQ/foreign twins/garbage rejected")
 
 

@@ -16,6 +16,7 @@ from .normalization import (
     evidence_looks_like_directory_listing,
     extract_registrable_domain,
     is_foreign_to_spain_domain,
+    is_insurer_portal_domain,
     is_noise_website_domain,
     looks_like_parent_or_group_name,
     normalize_homepage_url,
@@ -470,6 +471,8 @@ def build_website_candidates(
     for ev in evidences:
         domain = extract_registrable_domain(ev.url)
         if not domain or is_noise_website_domain(domain):
+            continue
+        if is_insurer_portal_domain(domain, legal_name):
             continue
         # Spanish SERPs: drop Italy/Brazil/Colombia lookalikes unless they are
         # true about/legal-notice self-ID pages (rare). Preserves .com brands

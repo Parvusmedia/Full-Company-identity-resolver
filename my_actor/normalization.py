@@ -665,6 +665,61 @@ def looks_like_parent_or_group_name(legal_name: str, page_name: str | None) -> b
     return False
 
 
+# Carrier/insurer portals — never the official site of an independent correduría
+# unless the legal name itself is that carrier.
+_INSURER_PORTAL_DOMAINS = frozenset(
+    {
+        "allianz.es",
+        "allianz.com",
+        "mapfre.es",
+        "mapfre.com",
+        "axa.es",
+        "axa.com",
+        "sanitas.es",
+        "adeslas.es",
+        "asisa.es",
+        "zurich.es",
+        "zurich.com",
+        "generali.es",
+        "generali.com",
+        "catalanaoccidente.com",
+        "ocaso.es",
+        "mutua.es",
+        "mutuamadrileña.es",
+        "mutua-madrileña.es",
+        "helvetia.es",
+        "libertyseguros.es",
+        "reale.es",
+        "pelayo.com",
+        "segurosbilbao.com",
+        "kpmg.com",
+        "kpmg.es",
+        "deloitte.com",
+        "deloitte.es",
+        "pwc.com",
+        "pwc.es",
+        "ey.com",
+    }
+)
+
+
+def is_insurer_portal_domain(domain: str | None, legal_name: str) -> bool:
+    """True when domain is a big insurer/consultancy portal unrelated to this broker."""
+    if not domain:
+        return False
+    d = domain.lower().removeprefix("www.")
+    matched = next((p for p in _INSURER_PORTAL_DOMAINS if d == p or d.endswith("." + p)), None)
+    if not matched:
+        return False
+    label = domain_label(matched)
+    core = core_name(legal_name)
+    core_tokens = set(core.split())
+    # Allow if legal name clearly is that carrier (Mapfre España, Allianz …).
+    if label and (label in core_tokens or label in core):
+        return False
+    return True
+
+
 def is_noise_website_domain(domain: str | None) -> bool:
     if not domain:
         return True
@@ -717,12 +772,39 @@ _FOREIGN_TO_SPAIN_SUFFIXES = (
     ".uk",
     ".ee",
     ".pt",
+    ".pe",
+    ".cl",
+    ".uy",
+    ".ec",
+    ".bo",
+    ".py",
+    ".ve",
+    ".cr",
+    ".pa",
+    ".gt",
+    ".hn",
+    ".sv",
+    ".ni",
+    ".do",
     ".be",
     ".nl",
     ".pl",
     ".ro",
     ".ch",
     ".at",
+    ".si",
+    ".sk",
+    ".cz",
+    ".hu",
+    ".se",
+    ".no",
+    ".dk",
+    ".fi",
+    ".ie",
+    ".gr",
+    ".bg",
+    ".hr",
+    ".rs",
 )
 
 
@@ -908,8 +990,10 @@ def select_official_website(
     harvest_clean = None
     harvest_dom = extract_registrable_domain(harvest_website)
     harvest_sim = 0.0
+    harvest_kept_for_evidence = None
     if harvest_website and harvest_dom and not is_noise_website_domain(harvest_dom):
         harvest_clean = normalize_homepage_url(harvest_website)
+        harvest_kept_for_evidence = harvest_clean
         harvest_sim = _sim(harvest_dom)
 
     google_clean = None
@@ -929,32 +1013,36 @@ def select_official_website(
     harvest_rank = _rank(harvest_sim, harvest_dom) if harvest_clean else -1.0
     google_rank = _rank(google_sim, google_dom) if google_clean else -1.0
 
+    # Never publish foreign-ccTLD Harvest twins for Spanish entities
+    # (Cover → Colombia, Eureka → Italy / UK). Keep URL only for evidence.
+    if harvest_clean and harvest_dom and is_foreign_to_spain_domain(harvest_dom):
+        harvest_clean = None
+        harvest_dom = None
+        harvest_rank = -1.0
+
     # 1) Harvest is authoritative when it looks even loosely related to the company.
     if harvest_clean and harvest_sim >= 25:
-        # Local .es brand page clearly beats a foreign Harvest site
-        # (Insurance Manager S.L. → insurance-manager.es vs UK .co.uk twin).
+        # Local .es brand page clearly beats a weaker Harvest site.
         if (
             google_clean
             and google_content_backed
             and wants_local_es
             and google_dom
             and google_dom.endswith(".es")
-            and harvest_dom
-            and not harvest_dom.endswith(".es")
             and (google_rank >= harvest_rank + 8 or google_sim >= 70)
         ):
-            return google_clean, google_dom, google_clean, harvest_clean
-        return harvest_clean, harvest_dom, google_clean, harvest_clean
+            return google_clean, google_dom, google_clean, harvest_kept_for_evidence
+        return harvest_clean, harvest_dom, google_clean, harvest_kept_for_evidence
 
     # 2) No usable Harvest → Google (already filtered for noise / content-backed).
     if google_clean:
-        return google_clean, google_dom, google_clean, harvest_clean
+        return google_clean, google_dom, google_clean, harvest_kept_for_evidence
 
     # 3) Weak Harvest fallback (non-noise but low name↔domain similarity).
     if harvest_clean and harvest_sim >= 20:
-        return harvest_clean, harvest_dom, google_clean, harvest_clean
+        return harvest_clean, harvest_dom, google_clean, harvest_kept_for_evidence
 
-    return None, None, None, harvest_clean
+    return None, None, None, harvest_kept_for_evidence
 
 
 def contains_branch_terms(*texts: str | None) -> bool:
