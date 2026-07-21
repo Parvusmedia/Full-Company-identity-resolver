@@ -762,14 +762,23 @@ async def resolve_company(
             cand.pre_score = pre_score
             cand.pre_score_reasons = reasons
 
+    from .match_guards import is_suppressed_linkedin
+
+    # Never spend Harvest quota on explicitly suppressed LinkedIn twins.
+    candidates = [c for c in candidates if not is_suppressed_linkedin(company.legal_name, c.linkedin_url)]
+
     # Sort by pre_score descending; stable list avoids score-keyed dict collisions
     candidates.sort(key=lambda c: c.pre_score, reverse=True)
     top_n = max(1, min(settings.max_harvest_candidates, 5))
-    to_enrich = candidates[:top_n]
-    # Skip 2nd Harvest call when #1 clearly leads.
+    # Always enrich at least 2 LinkedIn candidates when available so a high
+    # pre-score foreign twin that fails country checks does not starve the local
+    # alternative (cost: one extra Harvest call in contested cases).
+    enrich_n = max(top_n, min(2, len(candidates)))
+    to_enrich = candidates[:enrich_n]
     gap = settings.harvest_pre_score_gap
     if (
-        len(to_enrich) > 1
+        top_n == 1
+        and len(to_enrich) > 1
         and gap > 0
         and (candidates[0].pre_score - candidates[1].pre_score) >= gap
     ):
@@ -802,13 +811,65 @@ async def resolve_company(
 
     candidates.sort(key=lambda c: c.final_score, reverse=True)
 
+    # If the leader was crushed by country mismatch and a runner-up was never
+    # Harvest-enriched, enrich it once so local commercial_brand can win fairly.
     selected = candidates[0] if candidates else None
-    second_score = candidates[1].final_score if len(candidates) > 1 else None
+    if (
+        selected
+        and selected.final_score < 40
+        and any("mismatch" in r or "suppression" in r for r in (selected.score_reasons or []))
+    ):
+        alt = next((c for c in candidates[1:] if c.harvest is None and c.final_score >= 25), None)
+        if alt is None:
+            alt = next((c for c in candidates[1:] if c.harvest is None), None)
+        if alt is not None:
+            Actor.log.info(
+                "Top LinkedIn weak after country guards; enriching runner-up %s",
+                alt.linkedin_url,
+            )
+            extra_map = await enrich_candidates_with_harvest(
+                [alt.linkedin_url],
+                api_key=settings.harvest_api_key,
+                concurrency=1,
+            )
+            payload = extra_map.get(alt.linkedin_url) or {}
+            alt.harvest = payload.get("element")
+            alt.harvest_error = payload.get("error")
+            harvest_queries_used.append(alt.linkedin_url)
+            for cand in candidates:
+                final_score, reasons, relationship = compute_final_score(
+                    company, cand, website_candidates, country_code=settings.country_code
+                )
+                cand.final_score = final_score
+                cand.score_reasons = reasons
+                cand.relationship = relationship
+            candidates.sort(key=lambda c: c.final_score, reverse=True)
+
+    selected = candidates[0] if candidates else None
+    # Drop crushed leaders (score ~0 from suppression/mismatch with no signal).
+    if selected and selected.final_score < 15:
+        selected = next((c for c in candidates if c.final_score >= 40), None) or next(
+            (c for c in candidates if c.final_score >= 25), None
+        )
+    second_score = None
+    if selected and candidates:
+        others = [c.final_score for c in candidates if c.linkedin_url != selected.linkedin_url]
+        second_score = others[0] if others else None
     status = classify_match_status(
         selected.final_score if selected else 0.0,
         second_score,
         has_candidates=bool(candidates),
     )
+    # Local commercial_brand / parent with solid score → at least probable
+    # (AGA → asesoriaarribas: related, not confirmed same_entity).
+    if (
+        selected
+        and status == MatchStatus.AMBIGUOUS
+        and selected.final_score >= 50
+        and selected.relationship
+        in {Relationship.COMMERCIAL_BRAND, Relationship.PARENT_COMPANY, Relationship.SAME_ENTITY}
+    ):
+        status = MatchStatus.PROBABLE
     confidence = confidence_from_status(selected.final_score if selected else 0.0, status)
     relationship = selected.relationship if selected else Relationship.UNKNOWN
     commercial_name = (selected.harvest or {}).get("name") if selected and selected.harvest else None
@@ -922,12 +983,27 @@ async def resolve_company(
                 cand.relationship = rel
             candidates.sort(key=lambda c: c.final_score, reverse=True)
             selected = candidates[0] if candidates else None
-            second_score = candidates[1].final_score if len(candidates) > 1 else None
+            if selected and selected.final_score < 15:
+                selected = next((c for c in candidates if c.final_score >= 40), None) or next(
+                    (c for c in candidates if c.final_score >= 25), None
+                )
+            second_score = None
+            if selected and candidates:
+                others = [c.final_score for c in candidates if c.linkedin_url != selected.linkedin_url]
+                second_score = others[0] if others else None
             status = classify_match_status(
                 selected.final_score if selected else 0.0,
                 second_score,
                 has_candidates=bool(candidates),
             )
+            if (
+                selected
+                and status == MatchStatus.AMBIGUOUS
+                and selected.final_score >= 50
+                and selected.relationship
+                in {Relationship.COMMERCIAL_BRAND, Relationship.PARENT_COMPANY, Relationship.SAME_ENTITY}
+            ):
+                status = MatchStatus.PROBABLE
             confidence = confidence_from_status(selected.final_score if selected else 0.0, status)
             relationship = selected.relationship if selected else Relationship.UNKNOWN
             commercial_name = (selected.harvest or {}).get("name") if selected and selected.harvest else None
