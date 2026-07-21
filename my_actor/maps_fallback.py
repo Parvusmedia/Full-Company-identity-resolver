@@ -10,10 +10,12 @@ from apify import Actor
 from .models import WebsiteCandidate
 from .normalization import (
     core_name,
+    distinctive_name_tokens,
     domain_label,
     extract_registrable_domain,
     is_noise_website_domain,
     normalize_homepage_url,
+    normalize_text,
     remove_legal_forms,
     text_mentions_company,
 )
@@ -54,6 +56,7 @@ def maps_items_to_website_candidates(
     from .models import GoogleEvidence
 
     core = core_name(legal_name)
+    brand_tokens = distinctive_name_tokens(legal_name)
     out: list[WebsiteCandidate] = []
     for idx, item in enumerate(items):
         if not isinstance(item, dict):
@@ -65,15 +68,24 @@ def maps_items_to_website_candidates(
         if not domain or is_noise_website_domain(domain):
             continue
         title = _place_title(item) or ""
-        # Require the place title to mention the company, or domain to resemble it.
-        title_ok = text_mentions_company(title, legal_name) or name_similarity(core, title) >= 60
-        domain_ok = name_similarity(core, domain_label(domain)) >= 50
-        if not (title_ok or domain_ok):
+        title_n = normalize_text(title)
+        label = domain_label(domain)
+        # Require a distinctive brand token in the place title or domain.
+        # Avoid matching only weak qualifiers (e.g. Iberia airline for Willis Iberia).
+        brand_in_title = any(t in title_n for t in brand_tokens) if brand_tokens else False
+        brand_in_domain = any(t in label for t in brand_tokens) if brand_tokens else False
+        domain_ok = name_similarity(core, label) >= 55
+        title_ok = text_mentions_company(title, legal_name) or name_similarity(core, title) >= 70
+        if brand_tokens and not (brand_in_title or brand_in_domain):
+            continue
+        if not (title_ok or domain_ok or brand_in_domain):
             continue
         homepage = normalize_homepage_url(website) or website
         score = 40.0
         score += name_similarity(core, title) * 0.35
-        score += name_similarity(core, domain_label(domain)) * 0.35
+        score += name_similarity(core, label) * 0.35
+        if brand_in_domain:
+            score += 12.0
         if idx == 0:
             score += 8.0
         out.append(

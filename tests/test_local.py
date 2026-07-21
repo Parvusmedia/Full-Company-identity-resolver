@@ -371,6 +371,19 @@ def test_maps_place_to_website_candidate() -> None:
     assert len(cands) == 1
     assert cands[0].domain == "baigorri.com"
     assert cands[0].url == "https://www.baigorri.com/"
+
+    # Must not map Willis Iberia → iberia.com (airline)
+    bad = maps_items_to_website_candidates(
+        [
+            {
+                "title": "Iberia",
+                "website": "https://www.iberia.com/",
+                "categoryName": "Airline",
+            }
+        ],
+        "Willis Iberia Correduria De Seguros Y Reaseguros, S.A.",
+    )
+    assert bad == []
     print("OK maps place → website candidate")
 
 
