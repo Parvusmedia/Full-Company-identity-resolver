@@ -277,6 +277,10 @@ WEBSITE_NOISE_DOMAINS = {
     "cesce.es",
     "companywall.es",
     "borrmat.com",
+    "corredurias.org",
+    "opendi.es",
+    "conductordeprimera.com",
+    "einforma.com",
     "guiaempresas.wolterskluwer.es",
     "wolterskluwer.es",
     "sabi.bvdinfo.com",
@@ -477,6 +481,45 @@ _REGISTRY_TITLE_MARKERS = (
     "cif:",
     "nif:",
 )
+
+
+_DIRECTORY_LISTING_MARKERS = (
+    "corredurias en",
+    "datos de contacto de",
+    "datos de contacto",
+    "listado de",
+    "directorio de",
+    "directorio",
+    "empresas en",
+    "oficina de seguros",
+    "ubicacion",
+    "descripcion",
+    "sobre "  # weak alone; combined below
+)
+
+
+def evidence_looks_like_directory_listing(title: str | None, snippet: str | None) -> bool:
+    """Detect association/directory pages that list a company without being its site."""
+    title_n = normalize_text(title or "")
+    snip_n = normalize_text(snippet or "")
+    blob = f"{title_n} {snip_n}".strip()
+    if not blob:
+        return False
+    if any(m in snip_n for m in (
+        "corredurias en",
+        "datos de contacto de",
+        "listado de",
+        "directorio de",
+        "inscrita en el registro administrativo",
+        "registro administrativo especial de mediadores",
+    )):
+        return True
+    # Title is bare company name + snippet is a short directory card
+    if title_n and snip_n:
+        dir_hits = sum(1 for m in ("descripcion", "ubicacion", "direccion", "telefono", "landline", "place:") if m in snip_n)
+        if dir_hits >= 2:
+            return True
+    return False
 
 
 def title_looks_like_registry(title: str | None) -> bool:

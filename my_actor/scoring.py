@@ -10,7 +10,9 @@ from .models import CompanyInput, GoogleEvidence, LinkedInCandidate, MatchStatus
 from .normalization import (
     contains_branch_terms,
     core_name,
+    distinctive_name_tokens,
     domain_label,
+    evidence_looks_like_directory_listing,
     extract_registrable_domain,
     is_noise_website_domain,
     looks_like_parent_or_group_name,
@@ -21,6 +23,8 @@ from .normalization import (
     title_looks_like_registry,
     token_coverage,
     website_path_looks_editorial,
+    _ENTITY_QUALIFIER_TOKENS,
+    _normalize_qualifier_set,
 )
 
 
@@ -437,6 +441,8 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
     # Keep original URLs for editorial-path checks before homepage collapse.
     originals: dict[str, list[str]] = {}
     core = core_name(legal_name)
+    legal_tokens = set(core.split())
+    wants_local_es = bool(_normalize_qualifier_set(legal_tokens & _ENTITY_QUALIFIER_TOKENS))
     for ev in evidences:
         domain = extract_registrable_domain(ev.url)
         if not domain or is_noise_website_domain(domain):
@@ -459,13 +465,16 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
         title_backed = False
         snippet_only_backed = False
         editorial_only = True
+        directory_listing = False
         for ev, original_url in zip(cand.google_evidences, originals.get(cand.domain, [])):
             title_sim = name_similarity(core, ev.title or "")
-            snippet_sim = name_similarity(core, (ev.snippet or "")[:240])
             best_title_sim = max(best_title_sim, title_sim)
             title_hit = text_mentions_company(ev.title or "", legal_name)
             snippet_hit = text_mentions_company(ev.snippet or "", legal_name)
             if title_looks_like_registry(ev.title):
+                title_hit = False
+            if evidence_looks_like_directory_listing(ev.title, ev.snippet):
+                directory_listing = True
                 title_hit = False
             if title_hit:
                 title_backed = True
@@ -478,9 +487,13 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
         if editorial_only and domain_sim < 50:
             continue
 
+        # Association/directory pages that list the company are not official sites.
+        if directory_listing and domain_sim < 70:
+            continue
+
         # Content-backed brand domains require a title mention (not snippet-only),
         # to avoid competitor/news pages that merely name the firm in the blurb.
-        content_backed = title_backed and best_title_sim >= 55
+        content_backed = title_backed and best_title_sim >= 55 and not directory_listing
         if domain_sim < 50 and not content_backed:
             continue
         # Snippet-only mentions never rescue a dissimilar domain.
@@ -498,6 +511,12 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
                 score += 8.0
             if content_backed and ev.position is not None and ev.position <= 3:
                 score += 6.0
+        # Prefer Spanish ccTLD when the legal name is a local Iberia/Spain entity.
+        if wants_local_es and cand.domain.endswith(".es"):
+            score += 18.0
+        elif wants_local_es and cand.domain.endswith((".com", ".fr", ".pt", ".de")) and domain_sim >= 80:
+            # Parent-group international domains are plausible but secondary for *Iberica.
+            score -= 12.0
         cand.score = score
         cand.url = normalize_homepage_url(cand.url) or cand.url
         kept.append(cand)
