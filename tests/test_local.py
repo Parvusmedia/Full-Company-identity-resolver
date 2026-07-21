@@ -950,6 +950,70 @@ def test_country_relative_tld_not_spain_hardcoded() -> None:
     print("OK country-relative TLD preference (FR batch)")
 
 
+def test_match_guards_block_foreign_twins_and_suppressions() -> None:
+    """Past false positives must not republish: country mismatch + curated suppressions."""
+    from my_actor.match_guards import (
+        is_suppressed_domain,
+        is_suppressed_linkedin,
+        should_block_published_website,
+    )
+    from my_actor.models import CompanyInput, LinkedInCandidate
+    from my_actor.scoring import compute_final_score, classify_match_status
+
+    legal = "Aga Correduria De Seguros Arribas S.L."
+    assert is_suppressed_domain(legal, "arribas.pe")
+    assert is_suppressed_linkedin(legal, "https://www.linkedin.com/company/arribas-corredores-de-seguros-sac/")
+    assert not is_suppressed_linkedin(legal, "https://www.linkedin.com/company/asesoriaarribas/")
+
+    blocked, reason = should_block_published_website(legal, "arribas.pe", country_code="es")
+    assert blocked and reason in {"explicit_suppression", "country_mismatch_cctld"}
+    # Generic .com never blocked by country rule
+    assert should_block_published_website(legal, "asesoriaarribas.com", country_code="es") == (False, None)
+    # FR batch may publish .fr
+    assert should_block_published_website("Acme SAS", "acme.fr", country_code="fr") == (False, None)
+    assert should_block_published_website("Acme SAS", "acme.es", country_code="fr")[0] is True
+
+    company = CompanyInput(legal_name=legal)
+    peru = LinkedInCandidate(
+        linkedin_url="https://www.linkedin.com/company/arribas-corredores-de-seguros-sac/",
+        universal_name_guess="arribas-corredores-de-seguros-sac",
+        pre_score=80.0,
+        pre_score_reasons=["fixture"],
+        harvest={
+            "name": "ARRIBAS® - CORREDORES DE SEGUROS",
+            "universalName": "arribas-corredores-de-seguros-sac",
+            "website": "https://www.arribas.pe/",
+            "headquarter": {"city": "Lima", "country": "Peru"},
+        },
+    )
+    local = LinkedInCandidate(
+        linkedin_url="https://www.linkedin.com/company/asesoriaarribas/",
+        universal_name_guess="asesoriaarribas",
+        pre_score=48.0,
+        pre_score_reasons=["fixture"],
+        harvest={
+            "name": "ASESORIA Y GESTION ARRIBAS SL",
+            "universalName": "asesoriaarribas",
+            "website": "http://www.asesoriaarribas.com",
+            "headquarter": {"city": "Badalona", "country": "Spain"},
+        },
+    )
+    peru_score, peru_reasons, _ = compute_final_score(company, peru, [], country_code="es")
+    local_score, local_reasons, local_rel = compute_final_score(company, local, [], country_code="es")
+    assert peru_score == 0.0 or peru_score < local_score
+    assert "explicit_linkedin_suppression" in peru_reasons or any(
+        "mismatch" in r for r in peru_reasons
+    )
+    assert local_score > peru_score
+    assert any("country_ok" in r for r in local_reasons)
+    status = classify_match_status(local_score, peru_score, has_candidates=True)
+    assert status.value in {"probable", "high_confidence", "confirmed", "ambiguous"}
+    # Local related gestoría should clear the probable bar after country boost.
+    assert local_score >= 60 or status.value == "probable"
+    assert local_rel.value in {"commercial_brand", "parent_company", "same_entity", "requires_review"}
+    print("OK match guards: Peru twin suppressed, local Asesoría ranks higher")
+
+
 def main() -> None:
     test_json_files()
     test_parse_queries()
@@ -972,6 +1036,7 @@ def main() -> None:
     test_generic_name_prefers_matching_google_domain()
     test_batch_es_rejects_directories_and_foreign_twins()
     test_country_relative_tld_not_spain_hardcoded()
+    test_match_guards_block_foreign_twins_and_suppressions()
     print("\nAll local checks passed.")
 
 

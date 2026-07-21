@@ -256,13 +256,14 @@ def _sanitize_final_website(
     content_backed: bool,
     country_code: str | None = None,
 ) -> tuple[str | None, str | None, str | None]:
-    """Last-resort guard: never publish noise/garbage/insurer-portal websites.
+    """Last-resort guard: never publish noise/garbage/insurer/foreign-ccTLD websites.
 
-    Country-mismatched ccTLDs are handled in scoring / select_official_website
-    (soft preference). Do not hard-drop them here — a FR/BR/… batch must keep
-    its own ccTLD, and .com brands must survive ES batches.
+    Country mismatch is relative to ``country_code`` (batch setting), not a hard
+    ".es only" rule — FR batches keep ``.fr``, ES batches reject ``.pe``, etc.
+    Empty is better than a lookalike twin in another country.
     """
-    del content_backed, country_code
+    del content_backed
+    from .match_guards import should_block_published_website
     from .normalization import is_garbage_website_domain, is_insurer_portal_domain
 
     dom = domain or extract_registrable_domain(website)
@@ -271,6 +272,9 @@ def _sanitize_final_website(
     if is_noise_website_domain(dom) or is_garbage_website_domain(dom):
         return None, None, google_website
     if is_insurer_portal_domain(dom, legal_name):
+        return None, None, google_website
+    blocked, _reason = should_block_published_website(legal_name, dom, country_code=country_code)
+    if blocked:
         return None, None, google_website
     return website, dom, google_website
 
@@ -389,6 +393,10 @@ def _result_from_selection(
             or is_mismatched_country_domain(harvest_dom_for_guard, country_code)
         )
     )
+    from .match_guards import is_suppressed_linkedin
+
+    if selected and is_suppressed_linkedin(company.legal_name, selected.linkedin_url):
+        drop_bad_linkedin = True
 
     # Google .es (or other) overrode a foreign Harvest twin — detach that LinkedIn page.
     harvest_dom = extract_registrable_domain(str(harvest_website_raw) if harvest_website_raw else None)
@@ -619,6 +627,18 @@ async def resolve_company(
             concurrency=min(3, max(1, settings.max_website_probes)),
         )
 
+    # Never publish country-mismatched / explicitly suppressed domains.
+    # Empty is better than a foreign lookalike twin (arribas.pe, *.com.co, …).
+    from .match_guards import should_block_published_website
+
+    website_candidates = [
+        c
+        for c in website_candidates
+        if not should_block_published_website(
+            company.legal_name, c.domain, country_code=settings.country_code
+        )[0]
+    ]
+
     # Free final layer: Google AI Overview already returned with Search results.
     # Runs before Maps (Maps costs an extra Actor call).
     if not website_candidates and ai_overviews:
@@ -652,6 +672,13 @@ async def resolve_company(
                     concurrency=1,
                 )
             website_candidates = ai_list
+            website_candidates = [
+                c
+                for c in website_candidates
+                if not should_block_published_website(
+                    company.legal_name, c.domain, country_code=settings.country_code
+                )[0]
+            ]
 
     # Last resort: Google Maps place website when Search + AI Overview found nothing.
     if settings.fallback_google_maps and not website_candidates:
@@ -676,7 +703,13 @@ async def resolve_company(
                     max_probes=min(settings.max_website_probes, len(maps_candidates)),
                     concurrency=min(3, settings.max_website_probes),
                 )
-            website_candidates = maps_candidates
+            website_candidates = [
+                c
+                for c in maps_candidates
+                if not should_block_published_website(
+                    company.legal_name, c.domain, country_code=settings.country_code
+                )[0]
+            ]
 
     candidates = _dedupe_linkedin_candidates(linkedin_evidences)
 
@@ -760,7 +793,9 @@ async def resolve_company(
         harvest_queries_used.append(cand.linkedin_url)
 
     for cand in candidates:
-        final_score, reasons, relationship = compute_final_score(company, cand, website_candidates)
+        final_score, reasons, relationship = compute_final_score(
+            company, cand, website_candidates, country_code=settings.country_code
+        )
         cand.final_score = final_score
         cand.score_reasons = reasons
         cand.relationship = relationship
@@ -879,7 +914,9 @@ async def resolve_company(
 
             # Recompute final scores for all after fallback
             for cand in candidates:
-                final_score, reasons, rel = compute_final_score(company, cand, website_candidates)
+                final_score, reasons, rel = compute_final_score(
+                    company, cand, website_candidates, country_code=settings.country_code
+                )
                 cand.final_score = final_score
                 cand.score_reasons = reasons
                 cand.relationship = rel

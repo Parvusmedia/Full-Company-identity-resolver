@@ -230,11 +230,27 @@ def compute_final_score(
     company: CompanyInput,
     candidate: LinkedInCandidate,
     website_candidates: list[WebsiteCandidate],
+    *,
+    country_code: str | None = None,
 ) -> tuple[float, list[str], Relationship]:
     reasons = list(candidate.pre_score_reasons)
     score = candidate.pre_score * 0.35
     reasons.append(f"pre_score_contribution={candidate.pre_score * 0.35:.1f}")
     relationship = Relationship.UNKNOWN
+
+    from .match_guards import (
+        harvest_signals_country_mismatch,
+        is_suppressed_linkedin,
+    )
+    from .normalization import (
+        domain_matches_country,
+        is_generic_gtld_domain,
+        is_mismatched_country_domain,
+    )
+
+    if is_suppressed_linkedin(company.legal_name, candidate.linkedin_url):
+        reasons.append("explicit_linkedin_suppression")
+        return 0.0, reasons, Relationship.UNRELATED
 
     element = candidate.harvest or {}
     harvest_name = element.get("name") if isinstance(element, dict) else None
@@ -251,6 +267,7 @@ def compute_final_score(
         hq = element.get("headquarter") or element.get("headquarters")
 
     core = core_name(company.legal_name)
+    name_sim = 0.0
 
     if harvest_name:
         name_sim = name_similarity(core, str(harvest_name))
@@ -349,7 +366,8 @@ def compute_final_score(
             score += 5.0
             reasons.append(f"harvest_website_name_partial={harvest_label_sim:.1f}")
 
-    # Headquarters / city
+    # Country-relative Harvest geo: crush foreign-ccTLD / foreign-HQ twins so a
+    # local commercial_brand (asesoriaarribas) can surface as probable.
     hq_text = ""
     if isinstance(hq, dict):
         hq_text = " ".join(
@@ -358,6 +376,32 @@ def compute_final_score(
         )
     elif isinstance(hq, str):
         hq_text = hq
+    mismatched, mismatch_reason = harvest_signals_country_mismatch(
+        harvest_website=str(harvest_website) if harvest_website else None,
+        headquarters_text=hq_text,
+        country_code=country_code,
+    )
+    if mismatched:
+        score -= 42.0
+        reasons.append(mismatch_reason or "harvest_country_mismatch")
+        if relationship == Relationship.SAME_ENTITY:
+            relationship = Relationship.REQUIRES_REVIEW
+    elif harvest_domain and name_sim >= 50:
+        parentish_page = looks_like_parent_or_group_name(
+            company.legal_name, str(harvest_name or "")
+        ) or looks_like_parent_or_group_name(
+            company.legal_name, str(universal or "").replace("-", " ")
+        )
+        # Do not boost global parent pages (Marsh.com for Marsh Iberica).
+        if not parentish_page and (
+            domain_matches_country(harvest_domain, country_code)
+            or is_generic_gtld_domain(harvest_domain)
+        ):
+            if not is_mismatched_country_domain(harvest_domain, country_code):
+                score += 18.0
+                reasons.append("harvest_website_country_ok")
+
+    # Headquarters / city
     loc_blob = normalize_text(f"{hq_text} {description or ''} {tagline or ''}")
     if company.city and normalize_text(company.city) in loc_blob:
         score += 6.0
