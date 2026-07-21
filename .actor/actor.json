@@ -1,11 +1,17 @@
 {
   "actorSpecification": 1,
-  "name": "full-company-identity-resolver",
-  "title": "Full Company Identity Resolver",
-  "description": "Resolves Spanish company legal names into a single consolidated identity row with LinkedIn, website, domain and evidence.",
+  "name": "company-identity-resolver",
+  "title": "Company Identity Resolver: Legal Name → LinkedIn & Website",
+  "description": "Paste company or legal names and get LinkedIn, official website, domain, HQ, employees, confidence and evidence — one row per company. All-inclusive: no Harvest/OpenAI/Google API keys required. Built for CRM enrichment, prospecting and LinkedIn Ads.",
   "version": "0.1",
+  "meta": {
+    "canonicalOrigin": "https://github.com/Parvusmedia/Full-Company-identity-resolver"
+  },
   "build": {
     "dockerfile": "../Dockerfile"
   },
-  "input": "./input_schema.json"
+  "input": "./input_schema.json",
+  "storages": {
+    "dataset": "./dataset_schema.json"
+  }
 }

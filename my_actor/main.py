@@ -36,7 +36,7 @@ async def main() -> None:
         )
 
         Actor.log.info(
-            "Starting Full Company Identity Resolver for %s companies (debug=%s, max_harvest=%s).",
+            "Starting Company Identity Resolver for %s companies (debug=%s, max_harvest=%s).",
             len(companies),
             settings.debug,
             settings.max_harvest_candidates,
@@ -51,6 +51,12 @@ async def main() -> None:
         for result in results:
             item = result.to_dataset_item(debug=settings.debug)
             await Actor.push_data(item)
+            # PPE: charge per resolved company row when monetization is enabled.
+            # Safe no-op if the Actor is not published as pay-per-event.
+            try:
+                await Actor.charge("apify-default-dataset-item", count=1)
+            except Exception as exc:  # noqa: BLE001
+                Actor.log.debug("PPE charge skipped/failed: %s", type(exc).__name__)
 
         ok = sum(1 for r in results if r.match_status not in {"error", "not_found"})
         Actor.log.info(
