@@ -45,6 +45,7 @@ from .normalization import (
     core_name,
     domain_label,
     extract_registrable_domain,
+    is_foreign_to_spain_domain,
     is_noise_website_domain,
     normalize_homepage_url,
     normalize_linkedin_company_url,
@@ -245,6 +246,25 @@ def _build_evidence_summary(
     return " | ".join(parts)
 
 
+def _sanitize_final_website(
+    website: str | None,
+    domain: str | None,
+    google_website: str | None,
+    *,
+    content_backed: bool,
+) -> tuple[str | None, str | None, str | None]:
+    """Last-resort guard: never publish noise/garbage/foreign lookalike websites."""
+    dom = domain or extract_registrable_domain(website)
+    if not website or not dom:
+        return None, None, google_website
+    if is_noise_website_domain(dom):
+        return None, None, google_website
+    # Foreign ccTLD without content backing (about/legal/AI) → drop.
+    if is_foreign_to_spain_domain(dom) and not content_backed:
+        return None, None, google_website
+    return website, dom, google_website
+
+
 def _top_website_is_content_backed(website_candidates: list[Any], legal_name: str) -> bool:
     if not website_candidates:
         return False
@@ -296,6 +316,9 @@ def _result_from_selection(
             google_domain=raw_google_domain,
             google_content_backed=content_backed,
         )
+        website, domain, google_website = _sanitize_final_website(
+            website, domain, google_website, content_backed=content_backed
+        )
         result = _empty_result(company, error=error, status=status)
         result.google_queries_used = google_queries_used
         result.candidates_found = len(all_candidates)
@@ -325,10 +348,30 @@ def _result_from_selection(
         google_domain=raw_google_domain,
         google_content_backed=content_backed,
     )
+    website, domain, google_website = _sanitize_final_website(
+        website, domain, google_website, content_backed=content_backed
+    )
+
+    # If the only website was a foreign/noise twin and we dropped it, also drop the
+    # LinkedIn page that came from that twin (Eureka IT, Asegura BR, QDQ, …).
+    harvest_dom_for_guard = extract_registrable_domain(
+        str(harvest_website_raw) if harvest_website_raw else None
+    )
+    drop_bad_linkedin = bool(
+        website is None
+        and harvest_dom_for_guard
+        and (
+            is_noise_website_domain(harvest_dom_for_guard)
+            or is_foreign_to_spain_domain(harvest_dom_for_guard)
+        )
+    )
 
     # Google .es (or other) overrode a foreign Harvest twin — detach that LinkedIn page.
     harvest_dom = extract_registrable_domain(str(harvest_website_raw) if harvest_website_raw else None)
-    linkedin_detached = bool(domain and harvest_dom and domain != harvest_dom and website == google_website)
+    linkedin_detached = bool(
+        (domain and harvest_dom and domain != harvest_dom and website == google_website)
+        or drop_bad_linkedin
+    )
     website_linkedin = None
     if linkedin_detached and website_candidates:
         probe = website_candidates[0].homepage_probe if isinstance(website_candidates[0].homepage_probe, dict) else {}
@@ -479,8 +522,10 @@ async def resolve_company(
         company.legal_name,
         city=company.city,
         include_core_linkedin=not settings.defer_core_linkedin,
+        country_code=settings.country_code,
     )
     google_queries_used.extend(initial_queries)
+    prefer_local_es = (settings.country_code or "").lower() == "es"
 
     if prefetched_evidences is None:
         evidences, ai_overviews = await run_google_searches(
@@ -493,11 +538,17 @@ async def resolve_company(
             batch_size=settings.batch_size,
         )
     else:
-        evidences = evidences_for_company(prefetched_evidences, company.legal_name, city=company.city)
+        evidences = evidences_for_company(
+            prefetched_evidences,
+            company.legal_name,
+            city=company.city,
+            country_code=settings.country_code,
+        )
         ai_overviews = ai_overviews_for_company(
             prefetched_ai_overviews or [],
             company.legal_name,
             city=company.city,
+            country_code=settings.country_code,
         )
 
     linkedin_evidences = filter_linkedin_evidences(evidences)
@@ -529,7 +580,11 @@ async def resolve_company(
     website_query_evidences = [e for e in evidences if e.query_type == WEBSITE_QUERY]
     # Never fall back to LinkedIn SERP URLs as websites — that invents false domains.
     website_evidences = filter_website_evidences(website_query_evidences)
-    website_candidates = build_website_candidates(website_evidences, company.legal_name)
+    website_candidates = build_website_candidates(
+        website_evidences,
+        company.legal_name,
+        prefer_local_es=prefer_local_es,
+    )
     if settings.validate_websites and website_candidates:
         website_candidates = await validate_website_candidates(
             company.legal_name,
@@ -541,11 +596,24 @@ async def resolve_company(
     # Free final layer: Google AI Overview already returned with Search results.
     # Runs before Maps (Maps costs an extra Actor call).
     if not website_candidates and ai_overviews:
-        company_ai = ai_overviews_for_company(ai_overviews, company.legal_name, city=company.city)
+        company_ai = ai_overviews_for_company(
+            ai_overviews,
+            company.legal_name,
+            city=company.city,
+            country_code=settings.country_code,
+        )
+        # Drop foreign lookalikes from AI organic bridge when searching ES.
+        ai_organic = website_evidences
+        if prefer_local_es:
+            ai_organic = [
+                e
+                for e in website_evidences
+                if not is_foreign_to_spain_domain(e.domain or extract_registrable_domain(e.url))
+            ]
         ai_cand = website_candidate_from_ai_overview(
             company.legal_name,
             company_ai,
-            website_evidences,
+            ai_organic,
         )
         if ai_cand:
             Actor.log.info(
@@ -915,6 +983,7 @@ async def resolve_companies_batch(
                 company.legal_name,
                 city=company.city,
                 include_core_linkedin=not settings.defer_core_linkedin,
+                country_code=settings.country_code,
             )
         )
 
@@ -938,7 +1007,10 @@ async def resolve_companies_batch(
         core_queries: list[str] = []
         for _, company in to_resolve:
             company_ev = evidences_for_company(
-                all_evidences, company.legal_name, city=company.city
+                all_evidences,
+                company.legal_name,
+                city=company.city,
+                country_code=settings.country_code,
             )
             if filter_linkedin_evidences(company_ev):
                 continue
@@ -986,7 +1058,7 @@ async def resolve_companies_batch(
             )
             result = _empty_result(company, error=type(exc).__name__, status=MatchStatus.ERROR)
             result.google_queries_used = build_attribution_queries(
-                company.legal_name, city=company.city
+                company.legal_name, city=company.city, country_code=settings.country_code
             )
         results_by_index[idx] = result
 

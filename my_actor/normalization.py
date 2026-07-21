@@ -366,6 +366,18 @@ WEBSITE_NOISE_DOMAINS = {
     "gencat.cat",
     "icex.es",
     "investinspain.org",
+    # Local business directories / lead platforms / NGO lookalikes.
+    "qdq.com",
+    "qdq.es",
+    "f6s.com",
+    "ilo.org",
+    "agentsync.io",
+    "intelectium.com",
+    "merited.com.mx",
+    "merited.com",
+    "paginasamarillas.es",
+    "yellowpages.com",
+    "yelp.com",
 }
 
 _WEAK_PATH_MARKERS = (
@@ -659,7 +671,68 @@ def is_noise_website_domain(domain: str | None) -> bool:
     d = domain.lower().removeprefix("www.")
     if d in WEBSITE_NOISE_DOMAINS:
         return True
-    return any(d.endswith(f".{noise}") or d == noise for noise in WEBSITE_NOISE_DOMAINS)
+    if any(d.endswith(f".{noise}") or d == noise for noise in WEBSITE_NOISE_DOMAINS):
+        return True
+    return is_garbage_website_domain(d)
+
+
+def is_garbage_website_domain(domain: str | None) -> bool:
+    """Reject malformed hosts that are never real company sites (s.l, *.explora, …)."""
+    if not domain:
+        return True
+    d = domain.lower().removeprefix("www.")
+    try:
+        import tldextract
+
+        extracted = tldextract.extract(d)
+    except Exception:
+        return True
+    # No public suffix → not a real registrable web domain.
+    if not extracted.suffix:
+        return True
+    label = (extracted.domain or "").lower()
+    if len(label) <= 2:
+        return True
+    return False
+
+
+# Country-coded TLDs that are usually wrong for Spanish legal entities / ES SERPs.
+# Keep .com/.net/.org/.eu as internationally OK (Weecover, WTW, etc.).
+_FOREIGN_TO_SPAIN_SUFFIXES = (
+    ".com.br",
+    ".com.mx",
+    ".com.ar",
+    ".com.co",
+    ".com.pt",
+    ".com.pe",
+    ".com.cl",
+    ".co.uk",
+    ".org.br",
+    ".br",
+    ".mx",
+    ".ar",
+    ".it",
+    ".fr",
+    ".de",
+    ".uk",
+    ".ee",
+    ".pt",
+    ".be",
+    ".nl",
+    ".pl",
+    ".ro",
+    ".ch",
+    ".at",
+)
+
+
+def is_foreign_to_spain_domain(domain: str | None) -> bool:
+    """True for clearly non-Spanish ccTLDs (Italy/Brazil/Colombia/… lookalikes)."""
+    if not domain:
+        return False
+    d = domain.lower().removeprefix("www.")
+    # Check longer suffixes first (.com.br before .br).
+    return any(d.endswith(suf) for suf in _FOREIGN_TO_SPAIN_SUFFIXES)
 
 
 _DISPOSABLE_SUBDOMAINS = frozenset(

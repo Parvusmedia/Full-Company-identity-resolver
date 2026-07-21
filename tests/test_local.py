@@ -647,6 +647,9 @@ def test_weecover_aviso_legal_beats_startup_hub() -> None:
     assert cands and cands[0].domain == "weecover.com"
     assert cands[0].url == "https://www.weecover.com/"
     assert all(c.domain != "catalonia.com" for c in cands)
+    # Regression: ES prefer_local must not drop Weecover .com
+    cands_es = build_website_candidates(evidences, legal, prefer_local_es=True)
+    assert cands_es and cands_es[0].domain == "weecover.com"
     print("OK Weecover aviso-legal beats Catalonia startup hub")
 
 
@@ -712,9 +715,10 @@ def test_generic_name_prefers_matching_google_domain() -> None:
     from my_actor.google_search import build_website_query
 
     legal = "Insurance Manager, S.L."
-    wq = build_website_query(legal)
+    wq = build_website_query(legal, country_code="es")
     assert "S.L" in wq or "S.L." in wq
     assert '"' not in wq
+    assert "España" in wq
 
     evidences = [
         GoogleEvidence(
@@ -736,7 +740,7 @@ def test_generic_name_prefers_matching_google_domain() -> None:
             domain="bcbssc.com",
         ),
     ]
-    cands = build_website_candidates(evidences, legal)
+    cands = build_website_candidates(evidences, legal, prefer_local_es=True)
     assert cands, "expected insurance-manager.es candidate"
     assert cands[0].domain == "insurance-manager.es"
     assert all(c.domain != "bcbssc.com" for c in cands)
@@ -752,6 +756,100 @@ def test_generic_name_prefers_matching_google_domain() -> None:
     assert website == "https://www.insurance-manager.es/"
     assert harvest == "https://www.theinsurancemanager.co.uk/"
     print("OK generic-name website: Google #1 domain wins, bcbssc rejected, .es beats UK Harvest")
+
+
+def test_batch_es_rejects_directories_and_foreign_twins() -> None:
+    """EGM/QDQ, Cover Colombia, Eureka Italy, garbage hosts must not win for ES."""
+    from my_actor.normalization import is_foreign_to_spain_domain, is_noise_website_domain, is_garbage_website_domain
+    from my_actor.google_search import build_website_query
+
+    assert is_noise_website_domain("qdq.com")
+    assert is_noise_website_domain("f6s.com")
+    assert is_noise_website_domain("ilo.org")
+    assert is_foreign_to_spain_domain("eureka-ins.it")
+    assert is_foreign_to_spain_domain("globalcoverseguros.com.co")
+    assert is_foreign_to_spain_domain("asegura.com.br")
+    assert not is_foreign_to_spain_domain("weecover.com")
+    assert not is_foreign_to_spain_domain("wtwco.com")
+    assert not is_foreign_to_spain_domain("insurance-manager.es")
+    assert is_garbage_website_domain("s.l")
+    assert is_garbage_website_domain("plataforma.para")
+    assert is_garbage_website_domain("linkedin.explora")
+
+    egm_q = build_website_query("Egm Correduria De Seguros", country_code="es")
+    assert "España" in egm_q
+
+    egm = build_website_candidates(
+        [
+            GoogleEvidence(
+                query=egm_q,
+                query_type="website",
+                position=1,
+                title="EGM en QDQ",
+                snippet="Ficha EGM Correduria",
+                url="https://www.qdq.com/egm",
+                domain="qdq.com",
+            ),
+            GoogleEvidence(
+                query=egm_q,
+                query_type="website",
+                position=2,
+                title="EGM Correduría de Seguros",
+                snippet="Correduria de seguros en Madrid",
+                url="https://egmseguros.com/",
+                domain="egmseguros.com",
+            ),
+        ],
+        "Egm Correduria De Seguros",
+        prefer_local_es=True,
+    )
+    assert egm and egm[0].domain == "egmseguros.com"
+    assert all(c.domain != "qdq.com" for c in egm)
+
+    cover = build_website_candidates(
+        [
+            GoogleEvidence(
+                query="Cover Seguros España",
+                query_type="website",
+                position=1,
+                title="Global Cover Seguros Colombia",
+                snippet="Cover Seguros",
+                url="https://www.globalcoverseguros.com.co/",
+                domain="globalcoverseguros.com.co",
+            ),
+            GoogleEvidence(
+                query="Cover Seguros España",
+                query_type="website",
+                position=2,
+                title="Cover Seguros",
+                snippet="Cover Correduría de Seguros España",
+                url="https://www.coverseguros.com/",
+                domain="coverseguros.com",
+            ),
+        ],
+        "Cover Seguros",
+        prefer_local_es=True,
+    )
+    assert cover and cover[0].domain == "coverseguros.com"
+    assert all("com.co" not in (c.domain or "") for c in cover)
+
+    eureka = build_website_candidates(
+        [
+            GoogleEvidence(
+                query="Eureka Brokers España",
+                query_type="website",
+                position=1,
+                title="Eureka Insurance Broker Italia",
+                snippet="Eureka Brokers",
+                url="https://www.eureka-ins.it/",
+                domain="eureka-ins.it",
+            ),
+        ],
+        "Eureka Brokers Correduria De Seguros Sl",
+        prefer_local_es=True,
+    )
+    assert eureka == []
+    print("OK ES batch guards: QDQ/foreign twins/garbage rejected")
 
 
 def main() -> None:
@@ -774,6 +872,7 @@ def main() -> None:
     test_efficiency_defaults_and_skip()
     test_extract_linkedin_from_homepage_html()
     test_generic_name_prefers_matching_google_domain()
+    test_batch_es_rejects_directories_and_foreign_twins()
     print("\nAll local checks passed.")
 
 

@@ -36,7 +36,12 @@ def build_linkedin_query(legal_name: str) -> str:
     return f'"{legal_name}" linkedin'
 
 
-def build_website_query(legal_name: str, city: str | None = None) -> str:
+def build_website_query(
+    legal_name: str,
+    city: str | None = None,
+    *,
+    country_code: str | None = None,
+) -> str:
     """Discover official websites.
 
     Important: do **not** wrap the full legal name in quotes. Exact-phrase
@@ -47,6 +52,9 @@ def build_website_query(legal_name: str, city: str | None = None) -> str:
     Exception: when the core name is generic (few distinctive tokens, e.g.
     "Insurance Manager"), stripping legal forms makes Google match unrelated
     global products (provider portals). Keep the soft full legal name then.
+
+    For ES searches without a city, append "España" so short/acronym names
+    (EGM, Cover Seguros) stay on Spanish SERPs instead of directories/foreign twins.
     """
     raw = re.sub(r"\s+", " ", (legal_name or "").strip())
     core = remove_legal_forms(raw).strip() or raw
@@ -57,6 +65,11 @@ def build_website_query(legal_name: str, city: str | None = None) -> str:
         base = core
     if city and city.strip():
         return f"{base} {city.strip()}"
+    cc = (country_code or "").strip().lower()
+    if cc == "es":
+        low = base.casefold()
+        if "españa" not in low and "espana" not in low and "spain" not in low:
+            return f"{base} España"
     return base
 
 
@@ -73,13 +86,17 @@ def build_initial_queries(
     *,
     city: str | None = None,
     include_core_linkedin: bool = False,
+    country_code: str | None = None,
 ) -> list[str]:
     """Cheap initial Google queries: LinkedIn (exact) + soft website discovery.
 
     Core-name LinkedIn is deferred by default (see ``build_core_linkedin_query``)
     until the exact query yields no ``/company/`` hits.
     """
-    queries = [build_linkedin_query(legal_name), build_website_query(legal_name, city=city)]
+    queries = [
+        build_linkedin_query(legal_name),
+        build_website_query(legal_name, city=city, country_code=country_code),
+    ]
     if include_core_linkedin:
         core_q = build_core_linkedin_query(legal_name)
         if core_q:
@@ -87,9 +104,16 @@ def build_initial_queries(
     return queries
 
 
-def build_attribution_queries(legal_name: str, *, city: str | None = None) -> list[str]:
+def build_attribution_queries(
+    legal_name: str,
+    *,
+    city: str | None = None,
+    country_code: str | None = None,
+) -> list[str]:
     """All queries that may belong to a company (for batch evidence attribution)."""
-    return build_initial_queries(legal_name, city=city, include_core_linkedin=True)
+    return build_initial_queries(
+        legal_name, city=city, include_core_linkedin=True, country_code=country_code
+    )
 
 
 def build_domain_fallback_query(domain: str) -> str:
@@ -207,8 +231,13 @@ def ai_overviews_for_company(
     legal_name: str,
     *,
     city: str | None = None,
+    country_code: str | None = None,
 ) -> list[AiOverviewEvidence]:
-    allowed = {q.strip() for q in build_attribution_queries(legal_name, city=city) if q and q.strip()}
+    allowed = {
+        q.strip()
+        for q in build_attribution_queries(legal_name, city=city, country_code=country_code)
+        if q and q.strip()
+    }
     return [a for a in ai_overviews if (a.query or "").strip() in allowed]
 
 
@@ -417,9 +446,19 @@ def filter_website_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvid
     return out
 
 
-def evidences_for_company(evidences: list[GoogleEvidence], legal_name: str, *, city: str | None = None) -> list[GoogleEvidence]:
+def evidences_for_company(
+    evidences: list[GoogleEvidence],
+    legal_name: str,
+    *,
+    city: str | None = None,
+    country_code: str | None = None,
+) -> list[GoogleEvidence]:
     """Select evidences belonging to a company via exact query match (no substring bleed)."""
-    allowed = {q.strip() for q in build_attribution_queries(legal_name, city=city) if q and q.strip()}
+    allowed = {
+        q.strip()
+        for q in build_attribution_queries(legal_name, city=city, country_code=country_code)
+        if q and q.strip()
+    }
     if not allowed:
         return []
     return [e for e in evidences if (e.query or "").strip() in allowed]

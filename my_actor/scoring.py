@@ -15,6 +15,7 @@ from .normalization import (
     domain_label,
     evidence_looks_like_directory_listing,
     extract_registrable_domain,
+    is_foreign_to_spain_domain,
     is_noise_website_domain,
     looks_like_parent_or_group_name,
     normalize_homepage_url,
@@ -454,17 +455,30 @@ def confidence_from_status(score: float, status: MatchStatus) -> float:
     return round(_clamp(score), 2)
 
 
-def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -> list[WebsiteCandidate]:
+def build_website_candidates(
+    evidences: list[GoogleEvidence],
+    legal_name: str,
+    *,
+    prefer_local_es: bool = False,
+) -> list[WebsiteCandidate]:
     by_domain: dict[str, WebsiteCandidate] = {}
     # Keep original URLs for editorial-path checks before homepage collapse.
     originals: dict[str, list[str]] = {}
     core = core_name(legal_name)
     legal_tokens = set(core.split())
-    wants_local_es = bool(_normalize_qualifier_set(legal_tokens & _ENTITY_QUALIFIER_TOKENS))
+    wants_local_es = bool(_normalize_qualifier_set(legal_tokens & _ENTITY_QUALIFIER_TOKENS)) or prefer_local_es
     for ev in evidences:
         domain = extract_registrable_domain(ev.url)
         if not domain or is_noise_website_domain(domain):
             continue
+        # Spanish SERPs: drop Italy/Brazil/Colombia lookalikes unless they are
+        # true about/legal-notice self-ID pages (rare). Preserves .com brands
+        # (Weecover, WTW) while rejecting eureka-ins.it / *.com.co twins.
+        if prefer_local_es and is_foreign_to_spain_domain(domain):
+            snip_ok = text_mentions_company(ev.snippet or "", legal_name)
+            path_ok = website_path_looks_about(ev.url) or website_path_looks_legal_notice(ev.url)
+            if not (snip_ok and path_ok):
+                continue
         existing = by_domain.get(domain)
         if existing is None:
             existing = WebsiteCandidate(url=ev.url, domain=domain, google_evidences=[ev], score=0.0)
