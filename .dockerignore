@@ -1,0 +1,15 @@
+# Ignore local storage and virtualenv when building the Actor image.
+storage
+apify_storage
+.venv
+venv
+__pycache__
+*.pyc
+.git
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.env
+*.md
+!README.md
+tests
