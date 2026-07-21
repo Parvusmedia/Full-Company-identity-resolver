@@ -541,6 +541,20 @@ def test_ai_overview_website_fallback() -> None:
     assert len(evidences) == 1
     assert len(overviews) == 1
     assert parse_ai_overview(items[0], query) is not None
+    # Live-shaped: AI Overview on LinkedIn query mentions firm + WTW, no sources;
+    # website organic #1 is the WTW Spain portal.
+    live_ai = AiOverviewEvidence(
+        query=f'"{legal}" linkedin',
+        content=(
+            "Puedes encontrar perfiles de profesionales que trabajan en "
+            "Willis Iberia Correduria de Seguros y Reaseguros S.A. (parte de WTW) "
+            "directamente en LinkedIn."
+        ),
+        sources=[],
+    )
+    live = website_candidate_from_ai_overview(legal, [live_ai], [organic])
+    assert live is not None
+    assert live.url == "https://servicios-seguros.wtwco.com/"
     print("OK AI Overview website fallback for Willis Iberia")
 
 

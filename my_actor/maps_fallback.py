@@ -127,13 +127,8 @@ async def run_google_maps_fallback(
     search = build_maps_search_query(legal_name, city=city, province=province)
     Actor.log.info("Google Maps fallback for %s → %s", core_name(legal_name) or legal_name, search)
 
-    try:
-        from apify_client import ApifyClientAsync
-    except ImportError:
-        Actor.log.error("apify_client unavailable; cannot run Maps fallback.")
-        return []
+    from .apify_utils import call_actor_collect_items
 
-    client = ApifyClientAsync(token)
     run_input: dict[str, Any] = {
         "searchStringsArray": [search],
         "maxCrawledPlacesPerSearch": max(1, min(max_places, 10)),
@@ -148,24 +143,12 @@ async def run_google_maps_fallback(
     if location:
         run_input["locationQuery"] = location
 
-    try:
-        run = await client.actor(actor_id).call(run_input=run_input)
-    except Exception as exc:  # noqa: BLE001
-        Actor.log.warning("Google Maps fallback failed: %s", type(exc).__name__)
-        return []
-
-    dataset_id = getattr(run, "default_dataset_id", None)
-    if dataset_id is None and isinstance(run, dict):
-        dataset_id = run.get("defaultDatasetId") or run.get("default_dataset_id")
-    if not dataset_id:
-        Actor.log.warning("Google Maps fallback returned no dataset.")
-        return []
-
-    items: list[dict[str, Any]] = []
-    dataset = client.dataset(dataset_id)
-    async for item in dataset.iterate_items():
-        if isinstance(item, dict):
-            items.append(item)
+    items = await call_actor_collect_items(
+        token=token,
+        actor_id=actor_id,
+        run_input=run_input,
+        item_limit=max(10, max_places * 3),
+    )
 
     candidates = maps_items_to_website_candidates(items, legal_name)
     Actor.log.info(

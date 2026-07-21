@@ -197,6 +197,18 @@ def ai_overview_mentions_company(content: str | None, legal_name: str) -> bool:
     return bool(legal and legal in blob) or bool(core and core in blob)
 
 
+def _ai_brand_matches_domain(ai_blob: str, domain: str) -> bool:
+    """Loose brand↔domain aliases seen in AI Overviews (WTW → wtwco.com)."""
+    label = (domain.split(".")[0] if domain else "").lower()
+    if not label:
+        return False
+    # WTW / Willis Towers Watson group sites
+    if "wtw" in ai_blob.split() or "willis towers watson" in ai_blob or "willis towes watson" in ai_blob:
+        if label.startswith("wtw") or label in {"willis", "willistowerswatson"}:
+            return True
+    return False
+
+
 def website_candidate_from_ai_overview(
     legal_name: str,
     ai_overviews: list[AiOverviewEvidence],
@@ -247,15 +259,17 @@ def website_candidate_from_ai_overview(
         domain = ev.domain or extract_registrable_domain(ev.url) or ""
         host = (urlparse(ev.url).netloc or "").lower().removeprefix("www.")
         title_hit = text_mentions_company(ev.title or "", legal_name)
+        snippet_hit = text_mentions_company(ev.snippet or "", legal_name)
         if (
             domain in source_domains
             or domain in ai_blob
             or host.replace(".", "") in ai_blob.replace(" ", "").replace(".", "")
             or title_hit
+            or snippet_hit
+            or _ai_brand_matches_domain(ai_blob, domain)
         ):
             preferred.append(ev)
             break
-    # Do not blindly take unrelated #1 organic just because AI named the firm.
 
     if not preferred:
         seen_domains: set[str] = set()
@@ -278,6 +292,11 @@ def website_candidate_from_ai_overview(
                 )
             )
             break
+
+    # Last resort within this free layer: AI named the firm but cited no URL —
+    # take the top non-noise website organic (already preferred over Maps).
+    if not preferred and ranked_organic:
+        preferred.append(ranked_organic[0])
 
     if not preferred:
         return None
@@ -370,15 +389,9 @@ async def run_google_searches(
         Actor.log.warning("No APIFY_TOKEN available; Google Search cannot run.")
         return [], []
 
+    from .apify_utils import call_actor_collect_items
+
     all_items: list[dict[str, Any]] = []
-
-    try:
-        from apify_client import ApifyClientAsync
-    except ImportError:
-        Actor.log.error("apify_client is not available; cannot run Google Search Actor.")
-        return [], []
-
-    client = ApifyClientAsync(token)
 
     for batch in chunked(unique_queries, batch_size):
         run_input = {
@@ -395,26 +408,13 @@ async def run_google_searches(
             actor_id,
             len(batch),
         )
-        try:
-            run = await client.actor(actor_id).call(run_input=run_input)
-        except Exception as exc:  # noqa: BLE001
-            Actor.log.exception("Google Search Actor call failed: %s", type(exc).__name__)
-            continue
-
-        dataset_id = None
-        if run is not None:
-            # apify-client >=3 returns a Pydantic Run model; older code paths may yield a dict.
-            dataset_id = getattr(run, "default_dataset_id", None)
-            if dataset_id is None and isinstance(run, dict):
-                dataset_id = run.get("defaultDatasetId") or run.get("default_dataset_id")
-
-        if not dataset_id:
-            Actor.log.warning("Google Search Actor returned no dataset.")
-            continue
-        dataset = client.dataset(dataset_id)
-        async for item in dataset.iterate_items():
-            if isinstance(item, dict):
-                all_items.append(item)
+        batch_items = await call_actor_collect_items(
+            token=token,
+            actor_id=actor_id,
+            run_input=run_input,
+            item_limit=max(50, len(batch) * results_per_page * 2),
+        )
+        all_items.extend(batch_items)
 
     return parse_google_dataset_items(all_items)
 
