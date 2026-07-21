@@ -12,13 +12,17 @@ sys.path.insert(0, str(ROOT))
 from my_actor.models import CompanyInput, LinkedInCandidate, MatchStatus
 from my_actor.normalization import (
     core_name,
+    is_noise_website_domain,
+    normalize_homepage_url,
     normalize_linkedin_company_url,
     remove_legal_forms,
+    select_official_website,
     should_reject_linkedin_url,
 )
-from my_actor.resolver import parse_input_companies
-from my_actor.scoring import classify_match_status, compute_pre_score
+from my_actor.scoring import build_website_candidates, classify_match_status, compute_pre_score
 from my_actor.models import GoogleEvidence, ResolutionResult
+from my_actor.google_search import filter_website_evidences
+from my_actor.resolver import parse_input_companies
 
 
 def test_json_files() -> None:
@@ -139,6 +143,93 @@ def test_match_status_gap() -> None:
     print("OK match status classification")
 
 
+def test_website_homepage_and_noise_filter() -> None:
+    assert normalize_homepage_url("https://www.telefonica.es/es/nosotros/") == "https://www.telefonica.es/"
+    assert normalize_homepage_url("http://espabrok.es/contacto/") == "https://espabrok.es/"
+    assert is_noise_website_domain("infoempresa.com")
+    assert is_noise_website_domain("empresite.eleconomista.es")
+    assert is_noise_website_domain("boe.es")
+    assert is_noise_website_domain("muysegura.com")
+    assert not is_noise_website_domain("telefonica.es")
+    assert not is_noise_website_domain("espabrok.es")
+
+    evidences = [
+        GoogleEvidence(
+            query='"Pib Group Iberia" website',
+            query_type="website",
+            position=1,
+            title="PIB Group Iberia - Infoempresa",
+            url="https://www.infoempresa.com/en-in/es/company/pib-group-iberia",
+            domain="infoempresa.com",
+        ),
+        GoogleEvidence(
+            query='"Verspieren Iberica S.A." website',
+            query_type="website",
+            position=1,
+            title="BORME",
+            url="https://www.boe.es/diario_borme/txt.php?id=BORME-A-2026-79-28",
+            domain="boe.es",
+        ),
+        GoogleEvidence(
+            query='"Telefonica De Espana, S.A.U." website',
+            query_type="website",
+            position=1,
+            title="Telefónica",
+            url="https://www.telefonica.es/es/nosotros/",
+            domain="telefonica.es",
+        ),
+    ]
+    filtered = filter_website_evidences(evidences)
+    assert len(filtered) == 1
+    assert filtered[0].url == "https://www.telefonica.es/"
+    assert filtered[0].domain == "telefonica.es"
+
+    website, domain, _, _ = select_official_website(
+        legal_name="Telefonica De Espana, S.A.U.",
+        harvest_website="https://www.telefonica.es/es/nosotros/",
+        google_website="https://www.infoempresa.com/company/telefonica",
+        google_domain="infoempresa.com",
+    )
+    assert website == "https://www.telefonica.es/"
+    assert domain == "telefonica.es"
+
+    # Mismatched Harvest domain for another company must not win
+    website2, domain2, _, _ = select_official_website(
+        legal_name="Excess Corredores De Reaseguros Y Consultores, S.A.",
+        harvest_website="http://www.espabrok.es",
+        google_website="https://www.muysegura.com/articulo-espabrok",
+        google_domain="muysegura.com",
+    )
+    assert website2 is None
+    assert domain2 is None
+
+    candidates = build_website_candidates(
+        [
+            GoogleEvidence(
+                query='"Espabrok C.S S.A" website',
+                query_type="website",
+                position=1,
+                title="Artículo sobre Espabrok",
+                url="https://www.muysegura.com/carmelo-alonso-espabrok",
+                domain="muysegura.com",
+            ),
+            GoogleEvidence(
+                query='"Espabrok C.S S.A" website',
+                query_type="website",
+                position=2,
+                title="Espabrok",
+                url="http://www.espabrok.es/quienes-somos/",
+                domain="espabrok.es",
+            ),
+        ],
+        "Espabrok C.S S.A",
+    )
+    assert len(candidates) == 1
+    assert candidates[0].domain == "espabrok.es"
+    assert candidates[0].url == "https://www.espabrok.es/"
+    print("OK website homepage normalize + noise/mismatch filters")
+
+
 def main() -> None:
     test_json_files()
     test_parse_queries()
@@ -148,6 +239,7 @@ def main() -> None:
     test_one_row_and_debug_raw_harvest()
     test_duplicate_urls_single_candidate_scoring()
     test_match_status_gap()
+    test_website_homepage_and_noise_filter()
     print("\nAll local checks passed.")
 
 

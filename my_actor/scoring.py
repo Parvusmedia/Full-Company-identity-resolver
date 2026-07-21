@@ -10,7 +10,10 @@ from .models import CompanyInput, GoogleEvidence, LinkedInCandidate, MatchStatus
 from .normalization import (
     contains_branch_terms,
     core_name,
+    domain_label,
     extract_registrable_domain,
+    is_noise_website_domain,
+    normalize_homepage_url,
     normalize_text,
     slug_from_linkedin_url,
 )
@@ -346,7 +349,7 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
     core = core_name(legal_name)
     for ev in evidences:
         domain = extract_registrable_domain(ev.url)
-        if not domain:
+        if not domain or is_noise_website_domain(domain):
             continue
         existing = by_domain.get(domain)
         if existing is None:
@@ -356,21 +359,26 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
             existing.google_evidences.append(ev)
 
     candidates = list(by_domain.values())
+    kept: list[WebsiteCandidate] = []
     for cand in candidates:
-        score = 0.0
+        label = domain_label(cand.domain)
+        domain_sim = name_similarity(core, label)
+        # Reject directories/news sites whose domain does not resemble the company.
+        if domain_sim < 50:
+            continue
+        score = domain_sim * 0.55
         for ev in cand.google_evidences:
             bonus, _ = position_bonus(ev.position)
-            score += bonus
-            score += name_similarity(core, ev.title or "") * 0.2
+            score += bonus * 0.5
+            score += name_similarity(core, ev.title or "") * 0.15
             if ev.query_type == "website":
                 score += 8.0
-        # Prefer domains that resemble the company core name
-        score += name_similarity(core, (cand.domain or "").split(".")[0]) * 0.3
         cand.score = score
+        cand.url = normalize_homepage_url(cand.url) or cand.url
+        kept.append(cand)
 
-    # Sort list — do NOT index by score (ties must not overwrite)
-    candidates.sort(key=lambda c: c.score, reverse=True)
-    return candidates
+    kept.sort(key=lambda c: c.score, reverse=True)
+    return kept
 
 
 def candidate_debug_dict(candidate: LinkedInCandidate, *, debug: bool) -> dict[str, Any]:

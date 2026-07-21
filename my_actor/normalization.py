@@ -234,6 +234,181 @@ def extract_registrable_domain(url_or_domain: str | None) -> str | None:
         return host or None
 
 
+# Company registries, directories, official gazettes, social, etc. — never official websites.
+WEBSITE_NOISE_DOMAINS = {
+    "zoominfo.com",
+    "coursehero.com",
+    "facebook.com",
+    "twitter.com",
+    "x.com",
+    "instagram.com",
+    "youtube.com",
+    "wikipedia.org",
+    "crunchbase.com",
+    "bloomberg.com",
+    "yumpu.com",
+    "slideshare.net",
+    "scribd.com",
+    "emis.com",
+    "dnb.com",
+    "infoempresa.com",
+    "eleconomista.es",
+    "empresite.eleconomista.es",
+    "northdata.com",
+    "northdata.de",
+    "econodata.com.br",
+    "boe.es",
+    "borme.es",
+    "axesor.es",
+    "einforma.com",
+    "informa.es",
+    "expansion.com",
+    "rankia.com",
+    "emis.com",
+    "opencorporates.com",
+    "companieshouse.gov.uk",
+    "datocapital.com",
+    "empresia.es",
+    "infocif.es",
+    "librecon.es",
+    "paginasamarillas.es",
+    "yellowpages.com",
+    "yelp.com",
+    "glassdoor.com",
+    "indeed.com",
+    "talent.com",
+    "rocketreach.co",
+    "apollo.io",
+    "lusha.com",
+    "kompass.com",
+    "europages.es",
+    "europages.com",
+    "google.com",
+    "google.es",
+    "bing.com",
+    "realmadrid.com",
+    "muysegura.com",
+    "linkedin.com",
+}
+
+_WEAK_PATH_MARKERS = (
+    "/aviso-legal",
+    "/politica-de-privacidad",
+    "/privacy",
+    "/cookies",
+    "/contacto",
+    "/contact",
+    "/quienes-somos",
+    "/nosotros",
+    "/about",
+    "/blog/",
+    "/noticias/",
+    "/news/",
+    "/press/",
+    "/landing/",
+    "/diario_borme",
+    "/borme",
+    "/pdfs/",
+)
+
+
+def domain_label(domain: str | None) -> str:
+    if not domain:
+        return ""
+    return domain.split(".")[0].lower()
+
+
+def is_noise_website_domain(domain: str | None) -> bool:
+    if not domain:
+        return True
+    d = domain.lower().removeprefix("www.")
+    if d in WEBSITE_NOISE_DOMAINS:
+        return True
+    return any(d.endswith(f".{noise}") or d == noise for noise in WEBSITE_NOISE_DOMAINS)
+
+
+def normalize_homepage_url(url: str | None) -> str | None:
+    """Return scheme+host homepage only (no path/query/fragment)."""
+    if not url:
+        return None
+    raw = url.strip()
+    if not raw:
+        return None
+    parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+    host = (parsed.netloc or "").lower()
+    if not host:
+        return None
+    # Drop credentials/ports noise except keep non-default ports rarely needed
+    host = host.split("@")[-1]
+    scheme = "https"
+    return urlunparse((scheme, host, "/", "", "", ""))
+
+
+def website_path_looks_editorial(url: str | None) -> bool:
+    if not url:
+        return False
+    parsed = urlparse(url if "://" in url else f"https://{url}")
+    path = (parsed.path or "").lower()
+    if path.endswith(".pdf"):
+        return True
+    return any(marker in path for marker in _WEAK_PATH_MARKERS)
+
+
+def select_official_website(
+    *,
+    legal_name: str,
+    harvest_website: str | None,
+    google_website: str | None,
+    google_domain: str | None,
+    min_domain_similarity: float = 55.0,
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """
+    Choose a clean official homepage.
+
+    Returns (website, domain, google_website_clean, harvest_website_clean).
+    Prefers Harvest when present and not noise; otherwise Google only if domain
+    resembles the company name and is not a directory/gazette.
+    """
+    from rapidfuzz import fuzz
+
+    core = core_name(legal_name)
+
+    def _sim(domain: str | None) -> float:
+        label = domain_label(domain)
+        if not label or not core:
+            return 0.0
+        return float(fuzz.token_set_ratio(core, normalize_text(label)))
+
+    harvest_clean = None
+    harvest_dom = extract_registrable_domain(harvest_website)
+    harvest_sim = 0.0
+    if harvest_website and harvest_dom and not is_noise_website_domain(harvest_dom):
+        harvest_clean = normalize_homepage_url(harvest_website)
+        harvest_sim = _sim(harvest_dom)
+
+    google_clean = None
+    google_dom = google_domain or extract_registrable_domain(google_website)
+    google_sim = 0.0
+    if google_website and google_dom and not is_noise_website_domain(google_dom):
+        google_sim = _sim(google_dom)
+        if google_sim >= min_domain_similarity:
+            google_clean = normalize_homepage_url(google_website)
+        else:
+            google_dom = None
+
+    # Prefer Harvest when domain resembles the company; never keep a mismatched Harvest site
+    # just because Google had nothing useful (avoids assigning another firm's homepage).
+    if harvest_clean and harvest_sim >= 40:
+        return harvest_clean, harvest_dom, google_clean, harvest_clean
+    if google_clean and google_sim > harvest_sim:
+        return google_clean, google_dom, google_clean, harvest_clean
+    if harvest_clean and harvest_sim >= 35:
+        return harvest_clean, harvest_dom, google_clean, harvest_clean
+    if google_clean:
+        return google_clean, google_dom, google_clean, harvest_clean
+    return None, None, None, harvest_clean
+
+
 def contains_branch_terms(*texts: str | None) -> bool:
     blob = normalize_text(" ".join(t for t in texts if t))
     return any(term in blob for term in (normalize_text(t) for t in BRANCH_TERMS))

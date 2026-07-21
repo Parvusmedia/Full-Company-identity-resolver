@@ -12,6 +12,8 @@ from .models import GoogleEvidence
 from .normalization import (
     extract_registrable_domain,
     is_linkedin_company_url,
+    is_noise_website_domain,
+    normalize_homepage_url,
     normalize_linkedin_company_url,
     remove_legal_forms,
 )
@@ -21,24 +23,6 @@ LINKEDIN_QUERY = "linkedin"
 WEBSITE_QUERY = "website"
 DOMAIN_FALLBACK_QUERY = "domain_fallback"
 CORE_LINKEDIN_QUERY = "core_linkedin"
-
-_WEBSITE_NOISE_DOMAINS = {
-    "zoominfo.com",
-    "coursehero.com",
-    "facebook.com",
-    "twitter.com",
-    "x.com",
-    "instagram.com",
-    "youtube.com",
-    "wikipedia.org",
-    "crunchbase.com",
-    "bloomberg.com",
-    "yumpu.com",
-    "slideshare.net",
-    "scribd.com",
-    "emis.com",
-    "dnb.com",
-}
 
 
 def build_linkedin_query(legal_name: str) -> str:
@@ -165,13 +149,13 @@ def filter_website_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvid
         if "linkedin.com" in host:
             continue
         domain = extract_registrable_domain(ev.url) or host
-        if domain in _WEBSITE_NOISE_DOMAINS or any(domain.endswith(f".{d}") for d in _WEBSITE_NOISE_DOMAINS):
+        if is_noise_website_domain(domain):
             continue
-        # Government gazettes / random PDFs are weak website signals
         path = urlparse(ev.url).path.lower()
         if path.endswith(".pdf"):
             continue
-        out.append(ev)
+        homepage = normalize_homepage_url(ev.url) or ev.url
+        out.append(ev.model_copy(update={"url": homepage, "domain": domain}))
     return out
 
 
@@ -287,6 +271,8 @@ def extract_domains_from_text(*texts: str | None) -> list[str]:
         for match in _DOMAIN_IN_TEXT_RE.findall(text):
             domain = extract_registrable_domain(match)
             if not domain or domain in seen:
+                continue
+            if is_noise_website_domain(domain):
                 continue
             if any(x in domain for x in ("linkedin.com", "google.", "facebook.com")):
                 continue

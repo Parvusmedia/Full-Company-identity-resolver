@@ -39,7 +39,9 @@ from .models import (
 from .normalization import (
     core_name,
     extract_registrable_domain,
+    is_noise_website_domain,
     normalize_linkedin_company_url,
+    select_official_website,
     slug_from_linkedin_url,
 )
 from .scoring import (
@@ -189,19 +191,25 @@ def _result_from_selection(
     debug: bool,
     error: str | None = None,
 ) -> ResolutionResult:
-    google_website = website_candidates[0].url if website_candidates else None
-    google_domain = website_candidates[0].domain if website_candidates else None
+    raw_google_website = website_candidates[0].url if website_candidates else None
+    raw_google_domain = website_candidates[0].domain if website_candidates else None
 
     if selected is None:
+        website, domain, google_website, _harvest_clean = select_official_website(
+            legal_name=company.legal_name,
+            harvest_website=None,
+            google_website=raw_google_website,
+            google_domain=raw_google_domain,
+        )
         result = _empty_result(company, error=error, status=status)
         result.google_queries_used = google_queries_used
         result.candidates_found = len(all_candidates)
         result.google_website = google_website
-        result.domain = google_domain
-        result.website = google_website
+        result.domain = domain
+        result.website = website
         result.confidence = confidence
-        result.enrichment_status = "partial" if google_website else result.enrichment_status
-        if status == MatchStatus.NOT_FOUND and google_website:
+        result.enrichment_status = "partial" if website else result.enrichment_status
+        if status == MatchStatus.NOT_FOUND and website:
             result.match_status = MatchStatus.PARTIAL.value
             result.evidence_summary = "Website candidates found but no reliable LinkedIn match."
         if debug:
@@ -214,10 +222,13 @@ def _result_from_selection(
     hq_fields = harvest_headquarters_fields(element if element else None)
     industry, industries = harvest_industry(element if element else None)
     emp_range, emp_start, emp_end = harvest_employee_range(element if element else None)
-    harvest_website = element.get("website") if element else None
-    harvest_domain = extract_registrable_domain(str(harvest_website) if harvest_website else None)
-    website = harvest_website or google_website
-    domain = harvest_domain or google_domain
+    harvest_website_raw = element.get("website") if element else None
+    website, domain, google_website, harvest_website = select_official_website(
+        legal_name=company.legal_name,
+        harvest_website=str(harvest_website_raw) if harvest_website_raw else None,
+        google_website=raw_google_website,
+        google_domain=raw_google_domain,
+    )
 
     linkedin_id = None
     if element.get("id") is not None:
@@ -276,7 +287,7 @@ def _result_from_selection(
         relationship=relationship.value,
         match_status=status.value,
         confidence=confidence,
-        evidence_summary=_build_evidence_summary(selected, google_domain, status),
+        evidence_summary=_build_evidence_summary(selected, domain, status),
         candidates_found=len(all_candidates),
         candidates_enriched=sum(1 for c in all_candidates if c.harvest),
         google_queries_used=google_queries_used,
@@ -377,11 +388,17 @@ async def resolve_company(
             domain = website_candidates[0].domain
         if not domain and selected.harvest:
             domain = extract_registrable_domain(str(selected.harvest.get("website") or ""))
+        if domain and is_noise_website_domain(domain):
+            domain = None
         if not domain:
-            domains = extract_domains_from_text(
-                *[e.snippet for e in evidences],
-                *[e.title for e in evidences],
-            )
+            domains = [
+                d
+                for d in extract_domains_from_text(
+                    *[e.snippet for e in evidences],
+                    *[e.title for e in evidences],
+                )
+                if not is_noise_website_domain(d)
+            ]
             domain = domains[0] if domains else None
         if domain:
             fallback_q = build_domain_fallback_query(domain)

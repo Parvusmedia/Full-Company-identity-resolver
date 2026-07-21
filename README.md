@@ -152,6 +152,11 @@ discovered by Google. Response `element` fields are mapped into the output row.
 
 ## Notes
 
+- Official websites are stripped to homepage (`https://www.telefonica.es/`, never
+  `/es/nosotros/`). Directories and gazettes (`infoempresa.com`, `boe.es`,
+  `empresite.eleconomista.es`, `northdata.com`, news articles, etc.) are rejected.
+  Google website candidates must resemble the company name; Harvest websites with
+  a mismatched domain are not kept as the official site.
 - Cache via named Key-Value Store is intentionally **not** included in this first
   build (priority: correct build → correct run → correct results).
 - No dataset schema is published yet, to keep the Actor definition minimal and valid.
