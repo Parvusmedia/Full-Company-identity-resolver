@@ -1,0 +1,22 @@
+{
+  "companies": [
+    {
+      "source_id": "demo-1",
+      "legal_name": "Willis Iberia Correduria De Seguros Y Reaseguros, S.A.",
+      "city": "Madrid"
+    },
+    {
+      "source_id": "demo-2",
+      "legal_name": "Albrok Mediacion S.A.",
+      "city": "Madrid"
+    },
+    {
+      "source_id": "demo-3",
+      "legal_name": "Telefonica S.A.",
+      "city": "Madrid"
+    }
+  ],
+  "country_code": "es",
+  "language_code": "es",
+  "debug": false
+}

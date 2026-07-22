@@ -37,6 +37,11 @@ class CompanyInput(BaseModel):
     city: str | None = None
     province: str | None = None
     country: str | None = "España"
+    # Optional prior enrichment (from NocoDB) — used to skip already-good rows.
+    existing_website: str | None = None
+    existing_domain: str | None = None
+    existing_match_status: str | None = None
+    existing_linkedin_url: str | None = None
 
     @field_validator("legal_name")
     @classmethod
@@ -58,6 +63,7 @@ class ActorSettings(BaseModel):
     max_harvest_candidates: int = 2
     harvest_api_key: str | None = None
     harvest_concurrency: int = 3
+    harvest_pre_score_gap: float = 15.0
     fallback_google_by_website: bool = True
     fallback_confidence_threshold: int = 78
     use_ai_for_ambiguous: bool = False
@@ -66,6 +72,14 @@ class ActorSettings(BaseModel):
     ai_confidence_threshold: int = 78
     batch_size: int = 20
     debug: bool = False
+    validate_websites: bool = True
+    max_website_probes: int = 2
+    # Last resort after Google Search + AI Overview found no publishable website.
+    fallback_google_maps: bool = True
+    google_maps_actor_id: str = "compass/crawler-google-places"
+    google_maps_max_places: int = 5
+    skip_if_good_website: bool = True
+    defer_core_linkedin: bool = True
 
 
 class GoogleEvidence(BaseModel):
@@ -76,6 +90,12 @@ class GoogleEvidence(BaseModel):
     snippet: str | None = None
     url: str
     domain: str | None = None
+
+
+class AiOverviewEvidence(BaseModel):
+    query: str
+    content: str
+    sources: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class LinkedInCandidate(BaseModel):
@@ -96,6 +116,7 @@ class WebsiteCandidate(BaseModel):
     domain: str | None = None
     google_evidences: list[GoogleEvidence] = Field(default_factory=list)
     score: float = 0.0
+    homepage_probe: dict[str, Any] | None = None
 
 
 class AiDecision(BaseModel):
@@ -159,6 +180,8 @@ class ResolutionResult(BaseModel):
     ai_decision: dict[str, Any] | None = None
 
     def to_dataset_item(self, *, debug: bool = False) -> dict[str, Any]:
+        from my_actor.output_normalize import normalize_output_item
+
         data = self.model_dump(mode="json")
         if not debug:
             data.pop("candidates", None)
@@ -168,9 +191,6 @@ class ResolutionResult(BaseModel):
             for key in list(data.keys()):
                 if key.startswith("raw_"):
                     data.pop(key, None)
-        else:
-            # Keep candidates as provided; raw_harvest is nested inside each candidate
-            pass
         if not data.get("enriched_at"):
             data["enriched_at"] = datetime.now(timezone.utc).isoformat()
-        return data
+        return normalize_output_item(data, debug=debug)
