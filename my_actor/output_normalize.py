@@ -321,7 +321,11 @@ def normalize_output_item(data: dict[str, Any], *, debug: bool = False) -> dict[
 
 
 def normalize_noco_patch(patch: dict[str, Any]) -> dict[str, Any]:
-    """Sanitize a NocoDB PATCH payload immediately before HTTP write."""
+    """Sanitize a NocoDB PATCH payload immediately before HTTP write.
+
+    Only normalizes keys present in the input patch so partial updates (e.g. HQ
+  only) do not null out unrelated columns in NocoDB.
+    """
     out = dict(patch)
 
     for key in (
@@ -340,23 +344,25 @@ def normalize_noco_patch(patch: dict[str, Any]) -> dict[str, Any]:
         if key in out and out[key] is not None:
             out[key] = plain_string(out[key])
 
-    out["industry"] = industry_name_from_value(out.get("industry"))
-    if out.get("phone") is not None:
-        out["phone"] = harvest_phone({"phone": out.get("phone")})
-    out["headquarters_text"] = headquarters_text_from(text=out.get("headquarters_text"))
+    if "industry" in patch:
+        out["industry"] = industry_name_from_value(patch.get("industry"))
+    if "phone" in patch and patch.get("phone") is not None:
+        out["phone"] = harvest_phone({"phone": patch.get("phone")})
+    if "headquarters_text" in patch:
+        out["headquarters_text"] = headquarters_text_from(text=patch.get("headquarters_text"))
 
-    if out.get("website"):
-        out["website"] = normalize_homepage_url(str(out["website"]))
-        out["domain"] = extract_registrable_domain(out.get("website") or out.get("domain"))
-    elif out.get("domain"):
-        out["domain"] = extract_registrable_domain(str(out["domain"]))
-    if out.get("linkedin_url"):
-        out["linkedin_url"] = normalize_linkedin_company_url(str(out["linkedin_url"]))
+    if "website" in patch and patch.get("website"):
+        out["website"] = normalize_homepage_url(str(patch["website"]))
+        out["domain"] = extract_registrable_domain(out.get("website") or patch.get("domain"))
+    elif "domain" in patch and patch.get("domain"):
+        out["domain"] = extract_registrable_domain(str(patch["domain"]))
+    if "linkedin_url" in patch and patch.get("linkedin_url"):
+        out["linkedin_url"] = normalize_linkedin_company_url(str(patch["linkedin_url"]))
 
     for int_key in ("employee_count", "followers", "candidates_found", "candidates_enriched"):
-        if int_key in out:
-            out[int_key] = _to_int(out.get(int_key))
-    if "confidence" in out:
-        out["confidence"] = _to_float(out.get("confidence")) or 0.0
+        if int_key in patch:
+            out[int_key] = _to_int(patch.get(int_key))
+    if "confidence" in patch:
+        out["confidence"] = _to_float(patch.get("confidence")) or 0.0
 
     return out

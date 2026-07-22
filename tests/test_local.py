@@ -1145,6 +1145,9 @@ def test_output_normalize_before_write() -> None:
     assert patch["headquarters_text"] == "Madrid, Spain"
     assert patch["confidence"] == 72.5
     assert patch["employee_count"] == 28
+
+    hq_only = normalize_noco_patch({"Id": 2, "headquarters_text": "Barcelona, Spain"})
+    assert hq_only == {"Id": 2, "headquarters_text": "Barcelona, Spain"}
     print("OK output normalization before write")
 
 
