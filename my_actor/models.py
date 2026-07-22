@@ -180,7 +180,7 @@ class ResolutionResult(BaseModel):
     ai_decision: dict[str, Any] | None = None
 
     def to_dataset_item(self, *, debug: bool = False) -> dict[str, Any]:
-        from my_actor.harvest import industry_name_from_value
+        from my_actor.output_normalize import normalize_output_item
 
         data = self.model_dump(mode="json")
         if not debug:
@@ -191,22 +191,6 @@ class ResolutionResult(BaseModel):
             for key in list(data.keys()):
                 if key.startswith("raw_"):
                     data.pop(key, None)
-        else:
-            # Keep candidates as provided; raw_harvest is nested inside each candidate
-            pass
-        # NocoDB industry must stay a plain name (never Harvest object repr).
-        data["industry"] = industry_name_from_value(data.get("industry"))
-        raw_industries = data.get("industries")
-        if isinstance(raw_industries, list):
-            names: list[str] = []
-            for item in raw_industries:
-                name = industry_name_from_value(item)
-                if name and name not in names:
-                    names.append(name)
-            data["industries"] = names or None
-        else:
-            name = industry_name_from_value(raw_industries)
-            data["industries"] = [name] if name else None
         if not data.get("enriched_at"):
             data["enriched_at"] = datetime.now(timezone.utc).isoformat()
-        return data
+        return normalize_output_item(data, debug=debug)

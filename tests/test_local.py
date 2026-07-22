@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT))
 
 from my_actor.harvest import harvest_industry, industry_name_from_value
 from my_actor.models import CompanyInput, LinkedInCandidate, MatchStatus
+from my_actor.output_normalize import normalize_noco_patch, normalize_output_item
 from my_actor.normalization import (
     core_name,
     is_noise_website_domain,
@@ -1015,7 +1016,7 @@ def test_match_guards_block_foreign_twins_and_suppressions() -> None:
     print("OK match guards: Peru twin suppressed, local Asesoría ranks higher")
 
 
-def test_industry_stores_names_only() -> None:
+def test_output_normalize_before_write() -> None:
     blob = {
         "id": "42",
         "name": "Insurance",
@@ -1043,7 +1044,57 @@ def test_industry_stores_names_only() -> None:
     ).to_dataset_item(debug=False)
     assert item["industry"] == "Insurance"
     assert item["industries"] == ["Insurance"]
-    print("OK industry names-only normalization")
+
+    normalized = normalize_output_item(
+        {
+            "legal_name": "Test S.L.",
+            "industry": repr_s,
+            "industries": [blob],
+            "specialties": [{"name": "seguros"}, "insurtech"],
+            "phone": {"number": "900600004"},
+            "headquarters": {"city": "Madrid", "country": "Spain", "line1": "Calle Mayor 1"},
+            "locations": [{"city": "Barcelona", "country": "ES", "parsed": {"text": "Barcelona, Spain"}}],
+            "website": "https://example.com/path?q=1",
+            "linkedin_url": "https://www.linkedin.com/company/example/",
+            "confidence": 0.0,
+            "relationship": "unknown",
+            "match_status": "not_found",
+        },
+        debug=False,
+    )
+    assert normalized["industry"] == "Insurance"
+    assert normalized["industries"] == ["Insurance"]
+    assert normalized["specialties"] == ["seguros", "insurtech"]
+    assert normalized["phone"] == "900600004"
+    assert normalized["headquarters_text"] == "Calle Mayor 1, Madrid, Spain"
+    assert normalized["headquarters_city"] == "Madrid"
+    assert normalized["headquarters_country"] == "Spain"
+    assert normalized["headquarters"] is None
+    assert normalized["locations"] == ["Barcelona, Spain"]
+    assert normalized["website"] == "https://www.example.com/"
+    assert normalized["linkedin_url"] == "https://www.linkedin.com/company/example/"
+
+    patch = normalize_noco_patch(
+        {
+            "Id": 1,
+            "industry": repr_s,
+            "phone": {"number": "927233430"},
+            "headquarters_text": str({"city": "Madrid", "country": "Spain"}),
+            "website": "https://example.com/about",
+            "confidence": "72.5",
+            "employee_count": "28",
+        }
+    )
+    assert patch["industry"] == "Insurance"
+    assert patch["phone"] == "927233430"
+    assert patch["headquarters_text"] == "Madrid, Spain"
+    assert patch["confidence"] == 72.5
+    assert patch["employee_count"] == 28
+    print("OK output normalization before write")
+
+
+def test_industry_stores_names_only() -> None:
+    test_output_normalize_before_write()
 
 
 def test_directory_snippet_website_and_short_acronym_tokens() -> None:
@@ -1107,7 +1158,7 @@ def main() -> None:
     test_country_relative_tld_not_spain_hardcoded()
     test_match_guards_block_foreign_twins_and_suppressions()
     test_directory_snippet_website_and_short_acronym_tokens()
-    test_industry_stores_names_only()
+    test_output_normalize_before_write()
     print("\nAll local checks passed.")
 
 

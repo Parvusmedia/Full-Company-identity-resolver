@@ -15,9 +15,9 @@ from apify import Actor
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from my_actor.harvest import industry_name_from_value
 from my_actor.match_guards import is_suppressed_linkedin, should_block_published_website
 from my_actor.models import CompanyInput
+from my_actor.output_normalize import headquarters_text_from, normalize_noco_patch
 from my_actor.normalization import (
     domain_label,
     extract_registrable_domain,
@@ -117,31 +117,33 @@ def safe_patch_from_result(row: dict, result, *, country_code: str = "es") -> di
     queries_str = " | ".join(str(q) for q in queries) if isinstance(queries, list) else str(queries)
     now = datetime.now(timezone.utc).isoformat()
 
-    return {
-        "Id": row["Id"],
-        "source_id": str(row.get("source_id") or ""),
-        "legal_name": legal,
-        "Title": legal,
-        "commercial_name": item.get("commercial_name") if linkedin else None,
-        "linkedin_url": linkedin,
-        "website": website,
-        "domain": domain,
-        "industry": industry_name_from_value(item.get("industry")) if linkedin else None,
-        "employee_count": item.get("employee_count") if linkedin else None,
-        "followers": item.get("followers") if linkedin else None,
-        "phone": item.get("phone") if linkedin else None,
-        "headquarters_text": (item.get("headquarters_text") or item.get("headquarters")) if linkedin else None,
-        "relationship": item.get("relationship") if (linkedin or website) else "unknown",
-        "match_status": status if (website or linkedin) else "not_found",
-        "confidence": item.get("confidence") if (website or linkedin) else 0,
-        "evidence_summary": item.get("evidence_summary"),
-        "candidates_found": item.get("candidates_found"),
-        "candidates_enriched": item.get("candidates_enriched"),
-        "google_queries_used": queries_str,
-        "enrichment_status": enrichment if (website or linkedin) else "not_found",
-        "enriched_at": now,
-        "error": item.get("error"),
-    }
+    return normalize_noco_patch(
+        {
+            "Id": row["Id"],
+            "source_id": str(row.get("source_id") or ""),
+            "legal_name": legal,
+            "Title": legal,
+            "commercial_name": item.get("commercial_name") if linkedin else None,
+            "linkedin_url": linkedin,
+            "website": website,
+            "domain": domain,
+            "industry": item.get("industry") if linkedin else None,
+            "employee_count": item.get("employee_count") if linkedin else None,
+            "followers": item.get("followers") if linkedin else None,
+            "phone": item.get("phone") if linkedin else None,
+            "headquarters_text": headquarters_text_from(text=item.get("headquarters_text")) if linkedin else None,
+            "relationship": item.get("relationship") if (linkedin or website) else "unknown",
+            "match_status": status if (website or linkedin) else "not_found",
+            "confidence": item.get("confidence") if (website or linkedin) else 0,
+            "evidence_summary": item.get("evidence_summary"),
+            "candidates_found": item.get("candidates_found"),
+            "candidates_enriched": item.get("candidates_enriched"),
+            "google_queries_used": queries_str,
+            "enrichment_status": enrichment if (website or linkedin) else "not_found",
+            "enriched_at": now,
+            "error": item.get("error"),
+        }
+    )
 
 
 async def main() -> None:
@@ -198,7 +200,8 @@ async def main() -> None:
         if dry:
             print("DRY_RUN=1 — not patching NocoDB", flush=True)
             return
-        for p in patches:
+        for raw in patches:
+            p = normalize_noco_patch(raw)
             resp = requests.patch(f"{BASE}/api/v2/tables/{TABLE}/records", headers=HEADERS, json=p, timeout=60)
             if not resp.ok:
                 print(f"PATCH fail Id={p['Id']}: {resp.status_code} {resp.text[:200]}", flush=True)

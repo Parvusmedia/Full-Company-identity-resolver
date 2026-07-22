@@ -17,6 +17,7 @@ from apify import Actor
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from my_actor.models import CompanyInput
+from my_actor.output_normalize import headquarters_text_from, normalize_noco_patch
 from my_actor.resolver import resolve_companies_batch, settings_from_input
 
 BASE = os.environ["NOCO_BASE"].rstrip("/")
@@ -51,8 +52,6 @@ def fetch_pending(limit: int = 50) -> list[dict]:
 
 
 def result_to_patch(noco_id: int, source_id: str | None, result) -> dict:
-    from my_actor.harvest import industry_name_from_value
-
     item = result.to_dataset_item(debug=False)
     now = datetime.now(timezone.utc).isoformat()
     queries = item.get("google_queries_used") or []
@@ -64,31 +63,33 @@ def result_to_patch(noco_id: int, source_id: str | None, result) -> dict:
     enrichment = "enriched" if status in {"confirmed", "high_confidence", "probable"} else (
         "partial" if status == "partial" else ("not_found" if status == "not_found" else status)
     )
-    return {
-        "Id": noco_id,
-        "source_id": source_id,
-        "legal_name": item.get("legal_name"),
-        "Title": item.get("legal_name"),
-        "commercial_name": item.get("commercial_name"),
-        "linkedin_url": item.get("linkedin_url"),
-        "website": item.get("website"),
-        "domain": item.get("domain"),
-        "industry": industry_name_from_value(item.get("industry")),
-        "employee_count": item.get("employee_count"),
-        "followers": item.get("followers"),
-        "phone": item.get("phone"),
-        "headquarters_text": item.get("headquarters_text") or item.get("headquarters"),
-        "relationship": item.get("relationship"),
-        "match_status": status,
-        "confidence": item.get("confidence"),
-        "evidence_summary": item.get("evidence_summary"),
-        "candidates_found": item.get("candidates_found"),
-        "candidates_enriched": item.get("candidates_enriched"),
-        "google_queries_used": queries_str,
-        "enrichment_status": enrichment,
-        "enriched_at": now,
-        "error": item.get("error"),
-    }
+    return normalize_noco_patch(
+        {
+            "Id": noco_id,
+            "source_id": source_id,
+            "legal_name": item.get("legal_name"),
+            "Title": item.get("legal_name"),
+            "commercial_name": item.get("commercial_name"),
+            "linkedin_url": item.get("linkedin_url"),
+            "website": item.get("website"),
+            "domain": item.get("domain"),
+            "industry": item.get("industry"),
+            "employee_count": item.get("employee_count"),
+            "followers": item.get("followers"),
+            "phone": item.get("phone"),
+            "headquarters_text": headquarters_text_from(text=item.get("headquarters_text")),
+            "relationship": item.get("relationship"),
+            "match_status": status,
+            "confidence": item.get("confidence"),
+            "evidence_summary": item.get("evidence_summary"),
+            "candidates_found": item.get("candidates_found"),
+            "candidates_enriched": item.get("candidates_enriched"),
+            "google_queries_used": queries_str,
+            "enrichment_status": enrichment,
+            "enriched_at": now,
+            "error": item.get("error"),
+        }
+    )
 
 
 async def enrich_chunk(rows: list[dict]) -> list[dict]:
@@ -118,7 +119,8 @@ async def enrich_chunk(rows: list[dict]) -> list[dict]:
 
 
 def patch_rows(patches: list[dict]) -> None:
-    for p in patches:
+    for raw in patches:
+        p = normalize_noco_patch(raw)
         resp = requests.patch(f"{BASE}/api/v2/tables/{TABLE}/records", headers=HEADERS, json=p)
         if not resp.ok:
             print(f"PATCH fail Id={p['Id']}: {resp.status_code} {resp.text[:200]}", flush=True)
