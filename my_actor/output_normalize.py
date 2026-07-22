@@ -345,11 +345,20 @@ def normalize_noco_patch(patch: dict[str, Any]) -> dict[str, Any]:
             out[key] = plain_string(out[key])
 
     if "industry" in patch:
-        out["industry"] = industry_name_from_value(patch.get("industry"))
-    if "phone" in patch and patch.get("phone") is not None:
-        out["phone"] = harvest_phone({"phone": patch.get("phone")})
+        if patch.get("industry") is None:
+            out["industry"] = None
+        else:
+            out["industry"] = industry_name_from_value(patch.get("industry"))
+    if "phone" in patch:
+        if patch.get("phone") is None:
+            out["phone"] = None
+        else:
+            out["phone"] = harvest_phone({"phone": patch.get("phone")})
     if "headquarters_text" in patch:
-        out["headquarters_text"] = headquarters_text_from(text=patch.get("headquarters_text"))
+        if patch.get("headquarters_text") is None:
+            out["headquarters_text"] = None
+        else:
+            out["headquarters_text"] = headquarters_text_from(text=patch.get("headquarters_text"))
 
     if "website" in patch and patch.get("website"):
         out["website"] = normalize_homepage_url(str(patch["website"]))
@@ -361,8 +370,14 @@ def normalize_noco_patch(patch: dict[str, Any]) -> dict[str, Any]:
 
     for int_key in ("employee_count", "followers", "candidates_found", "candidates_enriched"):
         if int_key in patch:
-            out[int_key] = _to_int(patch.get(int_key))
+            if patch.get(int_key) is None:
+                out[int_key] = None
+            else:
+                out[int_key] = _to_int(patch.get(int_key))
     if "confidence" in patch:
-        out["confidence"] = _to_float(patch.get("confidence")) or 0.0
+        if patch.get("confidence") is None:
+            out["confidence"] = 0.0
+        else:
+            out["confidence"] = _to_float(patch.get("confidence")) or 0.0
 
     return out

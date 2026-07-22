@@ -44,6 +44,7 @@ from .models import (
 )
 from .normalization import (
     core_name,
+    distinctive_name_tokens,
     domain_label,
     extract_registrable_domain,
     collect_sector_hints_from_evidences,
@@ -416,19 +417,19 @@ def _result_from_selection(
                     break
         if not website_linkedin:
             # Discovery often runs as a LinkedInCandidate (website_linkedin) without
-            # copying URLs back onto homepage_probe — reuse that candidate.
+            # copying URLs back onto homepage_probe — reuse that candidate, but never
+            # reattach the detached foreign Harvest twin (selected).
+            detached_url = normalize_linkedin_company_url(selected.linkedin_url) if selected else None
             for cand in all_candidates:
+                cand_url = normalize_linkedin_company_url(cand.linkedin_url)
+                if not cand_url or cand_url == detached_url:
+                    continue
                 reasons = cand.pre_score_reasons or []
                 if "linkedin_found_on_official_website" in reasons or any(
                     (ev.query_type or "") == "website_linkedin" for ev in (cand.google_evidences or [])
                 ):
-                    website_linkedin = normalize_linkedin_company_url(cand.linkedin_url)
-                    if website_linkedin:
-                        break
-        if not website_linkedin and selected and any(
-            (ev.query_type or "") == "website_linkedin" for ev in (selected.google_evidences or [])
-        ):
-            website_linkedin = normalize_linkedin_company_url(selected.linkedin_url)
+                    website_linkedin = cand_url
+                    break
 
     linkedin_id = None
     if not linkedin_detached and element.get("id") is not None:
@@ -477,7 +478,7 @@ def _result_from_selection(
         source_id=company.source_id,
         legal_name=company.legal_name,
         tax_id=company.tax_id,
-        commercial_name=out_commercial if not linkedin_detached else out_commercial,
+        commercial_name=None if linkedin_detached else out_commercial,
         linkedin_url=out_linkedin,
         linkedin_id=linkedin_id,
         universal_name=(None if linkedin_detached else (element.get("universalName") if element else selected.universal_name_guess)),

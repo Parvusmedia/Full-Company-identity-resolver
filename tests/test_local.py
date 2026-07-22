@@ -1151,6 +1151,44 @@ def test_output_normalize_before_write() -> None:
     print("OK output normalization before write")
 
 
+def test_noco_patch_write_policy() -> None:
+    from my_actor import resolver as resolver_mod
+    from my_actor.models import ResolutionResult
+    from my_actor.noco_patch import finalize_noco_patch, safe_patch_from_result
+    from my_actor.normalization import distinctive_name_tokens
+
+    assert resolver_mod.distinctive_name_tokens is distinctive_name_tokens
+
+    row = {"Id": 99, "legal_name": "Banca March S.A.", "source_id": "15", "industry": "Banking"}
+    result = ResolutionResult(
+        legal_name="Banca March S.A.",
+        linkedin_url="https://www.linkedin.com/company/banca-march/",
+        match_status="confirmed",
+        confidence=95.0,
+        website="https://www.bancamarch.es/",
+        domain="bancamarch.es",
+        relationship="same_entity",
+        candidates_found=1,
+        candidates_enriched=1,
+    )
+    patch = safe_patch_from_result(row, result)
+    assert "industry" not in patch
+    assert patch["linkedin_url"]
+    assert patch["website"]
+
+    cleared = safe_patch_from_result(
+        row,
+        ResolutionResult(legal_name="Banca March S.A.", match_status="not_found"),
+    )
+    assert cleared.get("industry") is None
+    assert cleared.get("linkedin_url") is None
+
+    hq_only = finalize_noco_patch({"Id": 2, "headquarters_text": "Madrid, Spain"}, clear_harvest_fields=False)
+    assert hq_only == {"Id": 2, "headquarters_text": "Madrid, Spain"}
+    assert "industry" not in hq_only
+    print("OK Noco patch write policy")
+
+
 def test_industry_stores_names_only() -> None:
     test_output_normalize_before_write()
 
@@ -1217,6 +1255,7 @@ def main() -> None:
     test_match_guards_block_foreign_twins_and_suppressions()
     test_directory_snippet_website_and_short_acronym_tokens()
     test_output_normalize_before_write()
+    test_noco_patch_write_policy()
     test_harvest_headquarters_from_locations()
     print("\nAll local checks passed.")
 

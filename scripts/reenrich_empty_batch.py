@@ -7,7 +7,6 @@ import asyncio
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -15,18 +14,9 @@ from apify import Actor
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from my_actor.match_guards import is_suppressed_linkedin, should_block_published_website
 from my_actor.models import CompanyInput
-from my_actor.output_normalize import headquarters_text_from, normalize_noco_patch
-from my_actor.normalization import (
-    domain_label,
-    extract_registrable_domain,
-    is_garbage_website_domain,
-    is_insurer_portal_domain,
-    is_noise_website_domain,
-)
+from my_actor.noco_patch import safe_patch_from_result
 from my_actor.resolver import resolve_companies_batch, settings_from_input
-from my_actor.scoring import name_similarity
 
 BASE = os.environ["NOCO_BASE"].rstrip("/")
 TOKEN = os.environ["NOCO_TOKEN"]
@@ -35,14 +25,23 @@ HEADERS = {"xc-token": TOKEN, "Content-Type": "application/json"}
 
 
 def fetch_empty_batch(min_source_id: int = 46) -> list[dict]:
-    r = requests.get(
-        f"{BASE}/api/v2/tables/{TABLE}/records",
-        headers={"xc-token": TOKEN},
-        params={"limit": 200},
-        timeout=60,
-    )
-    r.raise_for_status()
-    rows = r.json().get("list") or []
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        r = requests.get(
+            f"{BASE}/api/v2/tables/{TABLE}/records",
+            headers={"xc-token": TOKEN},
+            params={"limit": 100, "offset": offset},
+            timeout=60,
+        )
+        r.raise_for_status()
+        batch = r.json().get("list") or []
+        if not batch:
+            break
+        rows.extend(batch)
+        offset += len(batch)
+        if len(batch) < 100:
+            break
     out = []
     for row in rows:
         try:
@@ -55,95 +54,6 @@ def fetch_empty_batch(min_source_id: int = 46) -> list[dict]:
             continue
         out.append(row)
     return out
-
-
-def _domain_ok(legal_name: str, domain: str | None, *, country_code: str) -> bool:
-    if not domain:
-        return False
-    if is_noise_website_domain(domain) or is_garbage_website_domain(domain):
-        return False
-    if is_insurer_portal_domain(domain, legal_name):
-        return False
-    blocked, _ = should_block_published_website(legal_name, domain, country_code=country_code)
-    if blocked:
-        return False
-    return True
-
-
-def _website_name_plausible(legal_name: str, domain: str | None) -> bool:
-    if not domain:
-        return False
-    sim = name_similarity(legal_name, domain_label(domain) or "")
-    # Brand domains often diverge (weecover, asesoriaarribas) — allow mid scores.
-    return sim >= 35
-
-
-def safe_patch_from_result(row: dict, result, *, country_code: str = "es") -> dict:
-    item = result.to_dataset_item(debug=False)
-    legal = item.get("legal_name") or row.get("legal_name") or row.get("Title")
-    status = (item.get("match_status") or "not_found").lower()
-    website = item.get("website") or None
-    domain = item.get("domain") or extract_registrable_domain(website)
-    linkedin = item.get("linkedin_url") or None
-
-    # Guards: never write known-bad / foreign-ccTLD / suppressed outcomes.
-    if website and not _domain_ok(legal, domain, country_code=country_code):
-        website, domain = None, None
-    if website and status in {"not_found", "error"} and not _website_name_plausible(legal, domain):
-        # Weak not_found + unrelated domain (tickets, NGOs, …) → keep empty.
-        website, domain = None, None
-    if website and status == "partial" and not _website_name_plausible(legal, domain):
-        website, domain = None, None
-    if linkedin and is_suppressed_linkedin(legal, linkedin):
-        linkedin = None
-
-    # If we cleared a bad website that came with a foreign LinkedIn, drop LI too
-    # when status is not_found / weak.
-    if not website and status in {"not_found"} and linkedin:
-        # Keep LinkedIn only when score-ish status was upgraded — not_found LI is noise.
-        linkedin = None
-
-    enrichment = "enriched" if status in {"confirmed", "high_confidence", "probable"} and linkedin else (
-        "partial" if website or (linkedin and status in {"probable", "high_confidence", "confirmed", "ambiguous", "partial"}) else (
-            "not_found" if status == "not_found" else status
-        )
-    )
-    if website and not linkedin and status in {"partial", "not_found"}:
-        enrichment = "partial"
-        if status == "not_found":
-            status = "partial"
-
-    queries = item.get("google_queries_used") or []
-    queries_str = " | ".join(str(q) for q in queries) if isinstance(queries, list) else str(queries)
-    now = datetime.now(timezone.utc).isoformat()
-
-    return normalize_noco_patch(
-        {
-            "Id": row["Id"],
-            "source_id": str(row.get("source_id") or ""),
-            "legal_name": legal,
-            "Title": legal,
-            "commercial_name": item.get("commercial_name") if linkedin else None,
-            "linkedin_url": linkedin,
-            "website": website,
-            "domain": domain,
-            "industry": item.get("industry") if linkedin else None,
-            "employee_count": item.get("employee_count") if linkedin else None,
-            "followers": item.get("followers") if linkedin else None,
-            "phone": item.get("phone") if linkedin else None,
-            "headquarters_text": headquarters_text_from(text=item.get("headquarters_text")) if linkedin else None,
-            "relationship": item.get("relationship") if (linkedin or website) else "unknown",
-            "match_status": status if (website or linkedin) else "not_found",
-            "confidence": item.get("confidence") if (website or linkedin) else 0,
-            "evidence_summary": item.get("evidence_summary"),
-            "candidates_found": item.get("candidates_found"),
-            "candidates_enriched": item.get("candidates_enriched"),
-            "google_queries_used": queries_str,
-            "enrichment_status": enrichment if (website or linkedin) else "not_found",
-            "enriched_at": now,
-            "error": item.get("error"),
-        }
-    )
 
 
 async def main() -> None:
@@ -200,8 +110,7 @@ async def main() -> None:
         if dry:
             print("DRY_RUN=1 — not patching NocoDB", flush=True)
             return
-        for raw in patches:
-            p = normalize_noco_patch(raw)
+        for p in patches:
             resp = requests.patch(f"{BASE}/api/v2/tables/{TABLE}/records", headers=HEADERS, json=p, timeout=60)
             if not resp.ok:
                 print(f"PATCH fail Id={p['Id']}: {resp.status_code} {resp.text[:200]}", flush=True)
