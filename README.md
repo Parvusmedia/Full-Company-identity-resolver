@@ -21,12 +21,24 @@ relationship and confidence with explainable evidence.
 10. Optional OpenAI only for ambiguous cases
 11. Push **one** dataset item per input company
 
+## Cost & client pricing
+
+See **[docs/COST_AND_PRICING.md](docs/COST_AND_PRICING.md)** for COGS per company,
+scenarios (min → worst case), Apify Store 20% commission, and recommended list price
+(**~$0.10–$0.12 / company** anchored on worst-case cost + ~40% net margin).
+
+```bash
+python -m my_actor.cost_model
+```
+
 ## Project layout
 
 ```text
 .actor/
   actor.json
   input_schema.json
+docs/
+  COST_AND_PRICING.md  # COGS scenarios + client pricing
 my_actor/
   __main__.py          # python -m my_actor
   main.py
@@ -37,6 +49,7 @@ my_actor/
   scoring.py
   resolver.py
   ai_resolver.py
+  cost_model.py        # unit costs + pricing calculator
 Dockerfile
 requirements.txt
 README.md
