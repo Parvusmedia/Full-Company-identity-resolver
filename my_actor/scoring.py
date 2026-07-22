@@ -190,7 +190,6 @@ def _looks_like_geographic_branch(name: str | None, universal: str | None, core:
         "canarias",
         "pontevedra",
         "coruna",
-        "a",
         "ourense",
         "lugo",
         "girona",

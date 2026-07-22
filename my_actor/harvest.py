@@ -188,6 +188,19 @@ def _parse_range_string(value: str) -> tuple[int | None, int | None]:
         return None, None
 
 
+def _location_completeness(loc: dict[str, Any]) -> int:
+    score = 0
+    if loc.get("headquarter") is True:
+        score += 100
+    parsed = loc.get("parsed") if isinstance(loc.get("parsed"), dict) else {}
+    if parsed.get("text"):
+        score += 25
+    for key in ("line1", "city", "geographicArea", "country"):
+        if loc.get(key):
+            score += 5
+    return score
+
+
 def pick_headquarter_location(element: dict[str, Any] | None) -> dict[str, Any] | None:
     """Return the primary HQ location from Harvest (headquarter dict or locations[])."""
     if not element:
@@ -202,11 +215,19 @@ def pick_headquarter_location(element: dict[str, Any] | None) -> dict[str, Any] 
     if not isinstance(locations, list) or not locations:
         return None
 
-    for loc in locations:
-        if isinstance(loc, dict) and loc.get("headquarter") is True:
+    dict_locs = [loc for loc in locations if isinstance(loc, dict)]
+    if not dict_locs:
+        return None
+
+    for loc in dict_locs:
+        if loc.get("headquarter") is True:
             return loc
-    first = locations[0]
-    return first if isinstance(first, dict) else None
+
+    if len(dict_locs) == 1:
+        return dict_locs[0]
+
+    best = max(dict_locs, key=_location_completeness)
+    return best if _location_completeness(best) >= 15 else None
 
 
 def headquarters_text_from_location(location: dict[str, Any] | None) -> str | None:

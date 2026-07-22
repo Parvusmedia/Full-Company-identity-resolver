@@ -86,12 +86,8 @@ def safe_patch_from_result(
         linkedin = None
 
     if website and not linkedin and status in {"partial", "not_found"}:
-        status = "partial"
-
-    if website and not linkedin and status in {"partial", "not_found"}:
         enrichment = "partial"
-        if status == "not_found":
-            status = "partial"
+        status = "partial"
     elif status in {"confirmed", "high_confidence", "probable"} and linkedin:
         enrichment = "enriched"
     elif website or (

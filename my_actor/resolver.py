@@ -1242,7 +1242,11 @@ async def resolve_companies_batch(
                 company.legal_name,
                 type(exc).__name__,
             )
-            result = _empty_result(company, error=type(exc).__name__, status=MatchStatus.ERROR)
+            result = _empty_result(
+                company,
+                error=f"{type(exc).__name__}: {exc}"[:500],
+                status=MatchStatus.ERROR,
+            )
             result.google_queries_used = build_attribution_queries(
                 company.legal_name, city=company.city, country_code=settings.country_code
             )

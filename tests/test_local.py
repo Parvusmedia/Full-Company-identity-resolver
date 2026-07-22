@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from my_actor.harvest import harvest_headquarters_fields, harvest_industry, industry_name_from_value
+from my_actor.harvest import harvest_headquarters_fields, harvest_industry, industry_name_from_value, pick_headquarter_location
 from my_actor.models import CompanyInput, LinkedInCandidate, MatchStatus
 from my_actor.output_normalize import normalize_noco_patch, normalize_output_item
 from my_actor.normalization import (
@@ -1151,6 +1151,33 @@ def test_output_normalize_before_write() -> None:
     print("OK output normalization before write")
 
 
+def test_pick_headquarter_prefers_richest_location() -> None:
+    locs = [
+        {"city": "Branch", "country": "ES", "description": "Satellite office"},
+        {
+            "city": "Madrid",
+            "country": "ES",
+            "line1": "Gran Via 1",
+            "parsed": {"text": "Madrid, Spain", "city": "Madrid", "country": "Spain"},
+        },
+    ]
+    picked = pick_headquarter_location({"locations": locs})
+    assert picked is not None
+    assert picked.get("city") == "Madrid"
+
+    flagged = pick_headquarter_location(
+        {
+            "locations": [
+                {"city": "Madrid", "country": "ES", "line1": "HQ street"},
+                {"city": "Barcelona", "country": "ES", "headquarter": True},
+            ]
+        }
+    )
+    assert flagged is not None
+    assert flagged.get("city") == "Barcelona"
+    print("OK headquarter location picker")
+
+
 def test_noco_patch_write_policy() -> None:
     from my_actor import resolver as resolver_mod
     from my_actor.models import ResolutionResult
@@ -1182,6 +1209,19 @@ def test_noco_patch_write_policy() -> None:
     )
     assert cleared.get("industry") is None
     assert cleared.get("linkedin_url") is None
+    assert cleared.get("enrichment_status") != "enriched"
+
+    weak = safe_patch_from_result(
+        row,
+        ResolutionResult(
+            legal_name="Howden Risk Solutions, S.A.U.",
+            match_status="not_found",
+            linkedin_url="https://www.linkedin.com/company/example/",
+            website="https://example.es/",
+            confidence=35.0,
+        ),
+    )
+    assert weak.get("enrichment_status") != "enriched"
 
     hq_only = finalize_noco_patch({"Id": 2, "headquarters_text": "Madrid, Spain"}, clear_harvest_fields=False)
     assert hq_only == {"Id": 2, "headquarters_text": "Madrid, Spain"}
@@ -1256,6 +1296,7 @@ def main() -> None:
     test_directory_snippet_website_and_short_acronym_tokens()
     test_output_normalize_before_write()
     test_noco_patch_write_policy()
+    test_pick_headquarter_prefers_richest_location()
     test_harvest_headquarters_from_locations()
     print("\nAll local checks passed.")
 
