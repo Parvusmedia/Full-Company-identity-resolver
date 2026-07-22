@@ -188,6 +188,63 @@ def _parse_range_string(value: str) -> tuple[int | None, int | None]:
         return None, None
 
 
+def pick_headquarter_location(element: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return the primary HQ location from Harvest (headquarter dict or locations[])."""
+    if not element:
+        return None
+    hq = element.get("headquarter") or element.get("headquarters")
+    if isinstance(hq, dict):
+        return hq
+    if isinstance(hq, str):
+        return {"description": hq}
+
+    locations = element.get("locations")
+    if not isinstance(locations, list) or not locations:
+        return None
+
+    for loc in locations:
+        if isinstance(loc, dict) and loc.get("headquarter") is True:
+            return loc
+    first = locations[0]
+    return first if isinstance(first, dict) else None
+
+
+def headquarters_text_from_location(location: dict[str, Any] | None) -> str | None:
+    """Build a human-readable HQ line from a Harvest location object."""
+    if not location:
+        return None
+
+    parsed = location.get("parsed") if isinstance(location.get("parsed"), dict) else {}
+    line1 = (location.get("line1") or location.get("address") or "").strip()
+    line2 = (location.get("line2") or "").strip()
+    street = f"{line1} {line2}".strip() if line2 else line1
+
+    city = location.get("city") or parsed.get("city")
+    region = (
+        location.get("geographicArea")
+        or location.get("region")
+        or location.get("state")
+        or parsed.get("state")
+    )
+    country = (
+        parsed.get("country")
+        or parsed.get("countryFull")
+        or location.get("country")
+        or parsed.get("countryCode")
+    )
+
+    if street:
+        parts = [p for p in [street, city, region, country] if p]
+        return ", ".join(str(p) for p in parts) if parts else None
+
+    parsed_text = parsed.get("text")
+    if parsed_text:
+        return str(parsed_text).strip()
+
+    parts = [p for p in [location.get("description"), city, region, country] if p]
+    return ", ".join(str(p) for p in parts) if parts else None
+
+
 def harvest_headquarters_fields(element: dict[str, Any] | None) -> dict[str, Any]:
     out: dict[str, Any] = {
         "headquarters": None,
@@ -198,20 +255,27 @@ def harvest_headquarters_fields(element: dict[str, Any] | None) -> dict[str, Any
     }
     if not element:
         return out
-    hq = element.get("headquarter") or element.get("headquarters")
-    out["headquarters"] = hq
-    if isinstance(hq, dict):
-        city = hq.get("city")
-        region = hq.get("geographicArea") or hq.get("region") or hq.get("state")
-        country = hq.get("country")
-        line = hq.get("line1") or hq.get("address") or hq.get("description")
-        parts = [p for p in [line, city, region, country] if p]
-        out["headquarters_city"] = city
-        out["headquarters_region"] = region
-        out["headquarters_country"] = country
-        out["headquarters_text"] = ", ".join(str(p) for p in parts) if parts else None
-    elif isinstance(hq, str):
-        out["headquarters_text"] = hq
+
+    loc = pick_headquarter_location(element)
+    if not isinstance(loc, dict):
+        return out
+
+    parsed = loc.get("parsed") if isinstance(loc.get("parsed"), dict) else {}
+    out["headquarters"] = loc
+    out["headquarters_city"] = loc.get("city") or parsed.get("city")
+    out["headquarters_region"] = (
+        loc.get("geographicArea")
+        or loc.get("region")
+        or loc.get("state")
+        or parsed.get("state")
+    )
+    out["headquarters_country"] = (
+        parsed.get("country")
+        or parsed.get("countryFull")
+        or loc.get("country")
+        or parsed.get("countryCode")
+    )
+    out["headquarters_text"] = headquarters_text_from_location(loc)
     return out
 
 

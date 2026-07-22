@@ -263,8 +263,13 @@ def compute_final_score(
     employee_count = element.get("employeeCount") if isinstance(element, dict) else None
     followers = element.get("followerCount") if isinstance(element, dict) else None
     hq = None
+    hq_text = ""
     if isinstance(element, dict):
-        hq = element.get("headquarter") or element.get("headquarters")
+        from my_actor.harvest import harvest_headquarters_fields
+
+        hq_fields = harvest_headquarters_fields(element)
+        hq = hq_fields.get("headquarters")
+        hq_text = hq_fields.get("headquarters_text") or ""
 
     core = core_name(company.legal_name)
     name_sim = 0.0
@@ -368,13 +373,12 @@ def compute_final_score(
 
     # Country-relative Harvest geo: crush foreign-ccTLD / foreign-HQ twins so a
     # local commercial_brand (asesoriaarribas) can surface as probable.
-    hq_text = ""
-    if isinstance(hq, dict):
+    if not hq_text and isinstance(hq, dict):
         hq_text = " ".join(
             str(hq.get(k) or "")
             for k in ("city", "geographicArea", "region", "country", "line1", "description")
         )
-    elif isinstance(hq, str):
+    elif not hq_text and isinstance(hq, str):
         hq_text = hq
     mismatched, mismatch_reason = harvest_signals_country_mismatch(
         harvest_website=str(harvest_website) if harvest_website else None,

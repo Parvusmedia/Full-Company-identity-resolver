@@ -10,7 +10,9 @@ from my_actor.harvest import (
     harvest_headquarters_fields,
     harvest_logo_url,
     harvest_phone,
+    headquarters_text_from_location,
     industry_name_from_value,
+    pick_headquarter_location,
 )
 from my_actor.normalization import (
     extract_registrable_domain,
@@ -115,7 +117,7 @@ def plain_string_list(
     return names or None
 
 
-def headquarters_text_from(*, text: Any = None, hq: Any = None) -> str | None:
+def headquarters_text_from(*, text: Any = None, hq: Any = None, locations: Any = None) -> str | None:
     """Build a human-readable HQ line; never return dict repr strings."""
     if isinstance(text, dict):
         hq = text
@@ -131,8 +133,11 @@ def headquarters_text_from(*, text: Any = None, hq: Any = None) -> str | None:
         hq = hq[0]
 
     if isinstance(hq, dict):
-        fields = harvest_headquarters_fields({"headquarter": hq})
-        return fields.get("headquarters_text") or plain_string(hq.get("description"))
+        return headquarters_text_from_location(hq) or plain_string(hq.get("description"))
+
+    loc = pick_headquarter_location({"locations": locations} if locations is not None else None)
+    if isinstance(loc, dict):
+        return headquarters_text_from_location(loc)
 
     if isinstance(hq, str):
         return hq.strip() or None
@@ -245,15 +250,27 @@ def normalize_output_item(data: dict[str, Any], *, debug: bool = False) -> dict[
         out["logo"] = harvest_logo_url({"logo": out.get("logo")})
 
     hq = out.get("headquarters")
-    out["headquarters_text"] = headquarters_text_from(text=out.get("headquarters_text"), hq=hq)
-    out["headquarters_city"] = headquarters_part(out.get("headquarters_city"), key="city") or headquarters_part(
-        hq, key="city"
+    raw_locations = out.get("locations")
+    hq_fields = harvest_headquarters_fields(
+        {
+            "headquarter": hq,
+            "headquarters": hq,
+            "locations": raw_locations if isinstance(raw_locations, list) and raw_locations and isinstance(raw_locations[0], dict) else None,
+        }
     )
-    out["headquarters_region"] = headquarters_part(out.get("headquarters_region"), key="region") or headquarters_part(
-        hq, key="region"
+    out["headquarters_text"] = headquarters_text_from(
+        text=out.get("headquarters_text") or hq_fields.get("headquarters_text"),
+        hq=hq_fields.get("headquarters") or hq,
+        locations=raw_locations if hq_fields.get("headquarters_text") is None else None,
     )
-    out["headquarters_country"] = headquarters_part(out.get("headquarters_country"), key="country") or headquarters_part(
-        hq, key="country"
+    out["headquarters_city"] = headquarters_part(out.get("headquarters_city"), key="city") or hq_fields.get(
+        "headquarters_city"
+    )
+    out["headquarters_region"] = headquarters_part(out.get("headquarters_region"), key="region") or hq_fields.get(
+        "headquarters_region"
+    )
+    out["headquarters_country"] = headquarters_part(out.get("headquarters_country"), key="country") or hq_fields.get(
+        "headquarters_country"
     )
 
     for url_key in ("website", "google_website", "harvest_website"):

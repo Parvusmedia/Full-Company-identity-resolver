@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from my_actor.harvest import harvest_industry, industry_name_from_value
+from my_actor.harvest import harvest_headquarters_fields, harvest_industry, industry_name_from_value
 from my_actor.models import CompanyInput, LinkedInCandidate, MatchStatus
 from my_actor.output_normalize import normalize_noco_patch, normalize_output_item
 from my_actor.normalization import (
@@ -1016,6 +1016,39 @@ def test_match_guards_block_foreign_twins_and_suppressions() -> None:
     print("OK match guards: Peru twin suppressed, local Asesoría ranks higher")
 
 
+def test_harvest_headquarters_from_locations() -> None:
+    loc = {
+        "country": "ES",
+        "city": "Barcelona",
+        "geographicArea": "Barcelona",
+        "line1": "Avenida Via Augusta 128, ",
+        "line2": " 3o 1a",
+        "headquarter": True,
+        "parsed": {"text": "Barcelona, Spain", "country": "Spain", "city": "Barcelona"},
+    }
+    fields = harvest_headquarters_fields({"locations": [loc]})
+    assert fields["headquarters_city"] == "Barcelona"
+    assert fields["headquarters_country"] == "Spain"
+    assert "Barcelona" in (fields["headquarters_text"] or "")
+    assert "Spain" in (fields["headquarters_text"] or "")
+
+    live = harvest_headquarters_fields(
+        {
+            "locations": [
+                {
+                    "country": "ES",
+                    "city": "Palma",
+                    "geographicArea": "Illes Balears",
+                    "headquarter": True,
+                    "parsed": {"text": "Palma, Spain", "country": "Spain", "city": "Palma"},
+                }
+            ]
+        }
+    )
+    assert live["headquarters_text"] == "Palma, Spain"
+    print("OK harvest headquarters from locations array")
+
+
 def test_output_normalize_before_write() -> None:
     blob = {
         "id": "42",
@@ -1073,6 +1106,28 @@ def test_output_normalize_before_write() -> None:
     assert normalized["locations"] == ["Barcelona, Spain"]
     assert normalized["website"] == "https://www.example.com/"
     assert normalized["linkedin_url"] == "https://www.linkedin.com/company/example/"
+
+    locations_only = normalize_output_item(
+        {
+            "legal_name": "Loc Only S.L.",
+            "locations": [
+                {
+                    "country": "ES",
+                    "city": "Valencia",
+                    "geographicArea": "Valencia",
+                    "headquarter": True,
+                    "parsed": {"text": "Valencia, Spain", "country": "Spain", "city": "Valencia"},
+                }
+            ],
+            "confidence": 0.0,
+            "relationship": "unknown",
+            "match_status": "not_found",
+        },
+        debug=False,
+    )
+    assert locations_only["headquarters_text"] == "Valencia, Spain"
+    assert locations_only["headquarters_city"] == "Valencia"
+    assert locations_only["headquarters_country"] == "Spain"
 
     patch = normalize_noco_patch(
         {
@@ -1159,6 +1214,7 @@ def main() -> None:
     test_match_guards_block_foreign_twins_and_suppressions()
     test_directory_snippet_website_and_short_acronym_tokens()
     test_output_normalize_before_write()
+    test_harvest_headquarters_from_locations()
     print("\nAll local checks passed.")
 
 
