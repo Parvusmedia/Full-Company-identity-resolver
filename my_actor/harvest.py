@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
+import json
 from typing import Any
 
 import httpx
@@ -213,23 +215,74 @@ def harvest_headquarters_fields(element: dict[str, Any] | None) -> dict[str, Any
     return out
 
 
-def harvest_industry(element: dict[str, Any] | None) -> tuple[str | None, list[Any] | None]:
+def industry_name_from_value(value: Any) -> str | None:
+    """Return a plain industry name from Harvest dicts, JSON, or Python repr strings."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        name = (
+            value.get("name")
+            or value.get("localizedName")
+            or value.get("title")
+            or value.get("label")
+        )
+        if name is None:
+            return None
+        text = str(name).strip()
+        return text or None
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            name = industry_name_from_value(item)
+            if name:
+                return name
+        return None
+    if not isinstance(value, str):
+        return industry_name_from_value(str(value))
+
+    text = value.strip()
+    if not text:
+        return None
+
+    # Recover names from accidental str(dict) / JSON blobs written to NocoDB.
+    if text[0] in "{[" and ("'name'" in text or '"name"' in text or "localizedName" in text):
+        parsed: Any = None
+        try:
+            parsed = ast.literal_eval(text)
+        except (SyntaxError, ValueError):
+            try:
+                parsed = json.loads(text)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                parsed = None
+        if parsed is not None:
+            name = industry_name_from_value(parsed)
+            if name:
+                return name
+
+    # Plain name (reject leftover object-looking strings).
+    if text.startswith("{") and ("'id'" in text or '"id"' in text or "urn:li:" in text):
+        return None
+    return text
+
+
+def harvest_industry(element: dict[str, Any] | None) -> tuple[str | None, list[str] | None]:
+    """Extract industry as plain name(s) only — never raw Harvest industry objects."""
     if not element:
         return None, None
+
+    names: list[str] = []
     industries = element.get("industries")
     if isinstance(industries, list) and industries:
-        first = industries[0]
-        if isinstance(first, dict):
-            name = first.get("name") or first.get("localizedName")
-            return (str(name) if name else None), industries
-        return str(first), industries
-    industry = element.get("industry")
-    if isinstance(industry, str):
-        return industry, [industry]
-    if isinstance(industry, dict):
-        name = industry.get("name") or industry.get("localizedName")
-        return (str(name) if name else None), [industry]
-    return None, None
+        for item in industries:
+            name = industry_name_from_value(item)
+            if name and name not in names:
+                names.append(name)
+    if not names:
+        name = industry_name_from_value(element.get("industry"))
+        if name:
+            names.append(name)
+    if not names:
+        return None, None
+    return names[0], names
 
 
 def harvest_founded_year(element: dict[str, Any] | None) -> int | None:

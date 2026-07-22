@@ -15,6 +15,7 @@ from apify import Actor
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from my_actor.harvest import industry_name_from_value
 from my_actor.match_guards import is_suppressed_linkedin, should_block_published_website
 from my_actor.models import CompanyInput
 from my_actor.normalization import (
@@ -125,7 +126,7 @@ def safe_patch_from_result(row: dict, result, *, country_code: str = "es") -> di
         "linkedin_url": linkedin,
         "website": website,
         "domain": domain,
-        "industry": item.get("industry") if linkedin else None,
+        "industry": industry_name_from_value(item.get("industry")) if linkedin else None,
         "employee_count": item.get("employee_count") if linkedin else None,
         "followers": item.get("followers") if linkedin else None,
         "phone": item.get("phone") if linkedin else None,

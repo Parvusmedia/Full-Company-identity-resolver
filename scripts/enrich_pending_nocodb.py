@@ -51,6 +51,8 @@ def fetch_pending(limit: int = 50) -> list[dict]:
 
 
 def result_to_patch(noco_id: int, source_id: str | None, result) -> dict:
+    from my_actor.harvest import industry_name_from_value
+
     item = result.to_dataset_item(debug=False)
     now = datetime.now(timezone.utc).isoformat()
     queries = item.get("google_queries_used") or []
@@ -71,7 +73,7 @@ def result_to_patch(noco_id: int, source_id: str | None, result) -> dict:
         "linkedin_url": item.get("linkedin_url"),
         "website": item.get("website"),
         "domain": item.get("domain"),
-        "industry": item.get("industry"),
+        "industry": industry_name_from_value(item.get("industry")),
         "employee_count": item.get("employee_count"),
         "followers": item.get("followers"),
         "phone": item.get("phone"),

@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from my_actor.harvest import harvest_industry, industry_name_from_value
 from my_actor.models import CompanyInput, LinkedInCandidate, MatchStatus
 from my_actor.normalization import (
     core_name,
@@ -1014,6 +1015,37 @@ def test_match_guards_block_foreign_twins_and_suppressions() -> None:
     print("OK match guards: Peru twin suppressed, local Asesoría ranks higher")
 
 
+def test_industry_stores_names_only() -> None:
+    blob = {
+        "id": "42",
+        "name": "Insurance",
+        "urn": "urn:li:fsd_industryV2:42",
+        "title": "Insurance",
+        "hierarchy": "Financial Services > Insurance",
+    }
+    primary, industries = harvest_industry({"industries": [blob, {"name": "Banking"}]})
+    assert primary == "Insurance"
+    assert industries == ["Insurance", "Banking"]
+
+    primary2, industries2 = harvest_industry({"industry": blob})
+    assert primary2 == "Insurance"
+    assert industries2 == ["Insurance"]
+
+    repr_s = str(blob)
+    assert industry_name_from_value(repr_s) == "Insurance"
+    assert industry_name_from_value('{"name": "Telecommunications", "id": "8"}') == "Telecommunications"
+    assert industry_name_from_value("Insurance") == "Insurance"
+
+    item = ResolutionResult(
+        legal_name="Test S.L.",
+        industry=repr_s,
+        industries=[blob],
+    ).to_dataset_item(debug=False)
+    assert item["industry"] == "Insurance"
+    assert item["industries"] == ["Insurance"]
+    print("OK industry names-only normalization")
+
+
 def test_directory_snippet_website_and_short_acronym_tokens() -> None:
     """EGM: keep short brand token; mine egmseguros.com from directory snippet."""
     from my_actor.google_search import website_evidences_from_directory_snippets
@@ -1075,6 +1107,7 @@ def main() -> None:
     test_country_relative_tld_not_spain_hardcoded()
     test_match_guards_block_foreign_twins_and_suppressions()
     test_directory_snippet_website_and_short_acronym_tokens()
+    test_industry_stores_names_only()
     print("\nAll local checks passed.")
 
 
