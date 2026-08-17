@@ -19,6 +19,7 @@ from my_actor.normalization import (
 from my_actor.resolver import parse_input_companies
 from my_actor.scoring import classify_match_status, compute_pre_score
 from my_actor.models import GoogleEvidence, ResolutionResult
+from tests.test_load_n8n_vars import test_jwt_aud_and_mcp_skip, test_load_keeps_existing_and_fills_missing
 
 
 def test_json_files() -> None:
@@ -148,6 +149,8 @@ def main() -> None:
     test_one_row_and_debug_raw_harvest()
     test_duplicate_urls_single_candidate_scoring()
     test_match_status_gap()
+    test_jwt_aud_and_mcp_skip()
+    test_load_keeps_existing_and_fills_missing()
     print("\nAll local checks passed.")
 
 
