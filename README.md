@@ -40,6 +40,8 @@ my_actor/
 Dockerfile
 requirements.txt
 README.md
+docs/SECRETS_PLAN_B.md
+scripts/load_n8n_vars.py
 ```
 
 ## Secrets (Apify environment variables)
@@ -51,6 +53,8 @@ Configure in the Actor settings / environment — **never commit secrets**:
 | `APIFY_TOKEN` | Yes (for Google) | Call Google Search Actor |
 | `HARVEST_API_KEY` | Yes (for enrichment) | `GET https://api.harvest-api.com/linkedin/company` |
 | `OPENAI_API_KEY` | Optional | Ambiguous-case disambiguation |
+
+Cloud Agents: Plan A is Cursor environment secrets. **Plan B (always required as fallback)** reads the same names from n8n Variables via `scripts/load_n8n_vars.py`. See [docs/SECRETS_PLAN_B.md](docs/SECRETS_PLAN_B.md). Tokens are **never** written to logs.
 
 Input may accept the same keys as fallbacks for local tests (`apify_token`,
 `harvest_api_key`, `openai_api_key`). Tokens are **never** written to logs.
