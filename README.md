@@ -17,9 +17,11 @@ relationship and confidence with explainable evidence.
 6. Reject personal profiles, jobs, school, showcase, posts, pulse
 7. Cheap pre-score → enrich top 1–3 candidates with HarvestAPI
 8. Final score combining Google + Harvest
-9. Optional third Google query by domain when confidence is low
-10. Optional OpenAI only for ambiguous cases
-11. Push **one** dataset item per input company
+9. **Identity gates** — cap score/status when legal name, slug tokens, and Harvest
+   name do not align (blocks directory/medio false positives such as Alimarket)
+10. Optional third Google query by domain when confidence is low
+11. Optional OpenAI only for ambiguous cases
+12. Push **one** dataset item per input company
 
 ## Project layout
 

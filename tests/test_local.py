@@ -17,8 +17,13 @@ from my_actor.normalization import (
     should_reject_linkedin_url,
 )
 from my_actor.resolver import parse_input_companies
-from my_actor.scoring import classify_match_status, compute_pre_score
-from my_actor.models import GoogleEvidence, ResolutionResult
+from my_actor.scoring import (
+    apply_identity_gates,
+    classify_match_status,
+    compute_final_score,
+    compute_pre_score,
+)
+from my_actor.models import GoogleEvidence, MatchStatus, ResolutionResult, Relationship, WebsiteCandidate
 
 
 def test_json_files() -> None:
@@ -131,6 +136,42 @@ def test_duplicate_urls_single_candidate_scoring() -> None:
     print("OK pre-score + same-score list ranking")
 
 
+def test_identity_gate_blocks_alimarket_style_match() -> None:
+    """Directory + wrong LinkedIn must not stay confirmed (Telefónica Apricot/Alimarket)."""
+    company = CompanyInput(legal_name="Apricot Restauraciones Slu")
+    url = "https://www.linkedin.com/company/publicaciones-alimarket-s.a./"
+    cand = LinkedInCandidate(
+        linkedin_url=url,
+        universal_name_guess="publicaciones-alimarket-s-a",
+        pre_score=52.5,
+        pre_score_reasons=["slug_similarity=53.1", "slug_token_coverage=0.00"],
+        harvest={
+            "name": "Publicaciones Alimarket, S.A.",
+            "website": "https://www.alimarket.es/",
+            "universalName": "publicaciones-alimarket-s-a",
+            "employeeCount": 50,
+            "followerCount": 1000,
+            "active": True,
+        },
+    )
+    websites = [
+        WebsiteCandidate(
+            url="https://www.alimarket.es/",
+            domain="alimarket.es",
+            google_evidences=[],
+            score=30.0,
+        )
+    ]
+    score, _, rel = compute_final_score(company, cand, websites)
+    status = classify_match_status(score, None, has_candidates=True)
+    score, status, rel, gates = apply_identity_gates(company, cand, score, status, rel)
+    assert status != MatchStatus.CONFIRMED
+    assert score <= 65
+    assert rel == Relationship.REQUIRES_REVIEW
+    assert gates
+    print("OK identity gate Alimarket-style false positive")
+
+
 def test_match_status_gap() -> None:
     assert classify_match_status(92, 91, has_candidates=True).value == "high_confidence"
     assert classify_match_status(92, 70, has_candidates=True).value == "confirmed"
@@ -147,6 +188,7 @@ def main() -> None:
     test_linkedin_url_rules_and_dedupe()
     test_one_row_and_debug_raw_harvest()
     test_duplicate_urls_single_candidate_scoring()
+    test_identity_gate_blocks_alimarket_style_match()
     test_match_status_gap()
     print("\nAll local checks passed.")
 

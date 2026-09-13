@@ -7,13 +7,21 @@ from typing import Any
 from rapidfuzz import fuzz
 
 from .models import CompanyInput, GoogleEvidence, LinkedInCandidate, MatchStatus, Relationship, WebsiteCandidate
+from .google_search import is_non_corporate_website_domain
 from .normalization import (
     contains_branch_terms,
     core_name,
     extract_registrable_domain,
     normalize_text,
     slug_from_linkedin_url,
+    token_coverage,
 )
+
+# Identity gates — prevent high confidence on wrong entity (directories, homonyms).
+IDENTITY_CONFIRM_MIN_NAME_SIM = 70.0
+IDENTITY_CONFIRM_MIN_TOKEN_COVERAGE = 0.34
+IDENTITY_GATE_MAX_SCORE = 65.0
+IDENTITY_GATE_AMBIGUOUS_MAX_SCORE = 55.0
 
 
 def _clamp(score: float, low: float = 0.0, high: float = 100.0) -> float:
@@ -51,8 +59,10 @@ def compute_pre_score(
     core = core_name(company.legal_name)
     slug = candidate.universal_name_guess or slug_from_linkedin_url(candidate.linkedin_url) or ""
     slug_sim = name_similarity(core, slug.replace("-", " "))
+    slug_cov = token_coverage(company.legal_name, slug.replace("-", " "))
     score += slug_sim * 0.35
     reasons.append(f"slug_similarity={slug_sim:.1f}")
+    reasons.append(f"slug_token_coverage={slug_cov:.2f}")
 
     best_title_sim = 0.0
     best_position_bonus = 0.0
@@ -174,16 +184,17 @@ def compute_final_score(
         hq = element.get("headquarter") or element.get("headquarters")
 
     core = core_name(company.legal_name)
+    harvest_name_sim = 0.0
 
     if harvest_name:
-        name_sim = name_similarity(core, str(harvest_name))
-        score += name_sim * 0.20
-        reasons.append(f"harvest_name_similarity={name_sim:.1f}")
-        if name_sim >= 90:
+        harvest_name_sim = name_similarity(core, str(harvest_name))
+        score += harvest_name_sim * 0.20
+        reasons.append(f"harvest_name_similarity={harvest_name_sim:.1f}")
+        if harvest_name_sim >= 90:
             relationship = Relationship.SAME_ENTITY
-        elif name_sim >= 70:
+        elif harvest_name_sim >= 70:
             relationship = Relationship.COMMERCIAL_BRAND
-        elif name_sim < 45:
+        elif harvest_name_sim < 45:
             relationship = Relationship.REQUIRES_REVIEW
 
     if universal:
@@ -201,25 +212,47 @@ def compute_final_score(
     harvest_domain = extract_registrable_domain(str(harvest_website) if harvest_website else None)
     harvest_host = _host_without_www(str(harvest_website) if harvest_website else None)
 
+    def _domain_aligned_with_legal() -> bool:
+        if harvest_name_sim >= IDENTITY_CONFIRM_MIN_NAME_SIM:
+            return True
+        for dom in (google_domain, harvest_domain):
+            if not dom:
+                continue
+            label = dom.split(".")[0].replace("-", " ")
+            if name_similarity(core, label) >= 55:
+                return True
+            if token_coverage(company.legal_name, label) >= IDENTITY_CONFIRM_MIN_TOKEN_COVERAGE:
+                return True
+        return False
+
     if google_domain and harvest_domain:
         if google_domain == harvest_domain:
-            # Prefer apex / www over city subdomains (vigo.albroksa.com).
-            if harvest_host and google_host and harvest_host == google_host:
-                score += 20.0
-                reasons.append("exact_host_match")
-            elif harvest_host and harvest_host.count(".") == google_domain.count("."):
-                # apex host equals registrable domain
-                score += 18.0
-                reasons.append("exact_domain_match")
-            elif harvest_host and harvest_host.endswith("." + google_domain):
-                score += 8.0
-                reasons.append("subdomain_domain_match")
-                relationship = Relationship.BRANCH
+            if is_non_corporate_website_domain(google_domain, company.legal_name):
+                score -= 12.0
+                reasons.append("penalty_non_corporate_domain")
+                relationship = Relationship.REQUIRES_REVIEW
+            elif _domain_aligned_with_legal():
+                # Prefer apex / www over city subdomains (vigo.albroksa.com).
+                if harvest_host and google_host and harvest_host == google_host:
+                    score += 20.0
+                    reasons.append("exact_host_match")
+                elif harvest_host and harvest_host.count(".") == google_domain.count("."):
+                    score += 18.0
+                    reasons.append("exact_domain_match")
+                elif harvest_host and harvest_host.endswith("." + google_domain):
+                    score += 8.0
+                    reasons.append("subdomain_domain_match")
+                    relationship = Relationship.BRANCH
+                else:
+                    score += 14.0
+                    reasons.append("exact_domain_match")
+                if relationship in {Relationship.UNKNOWN, Relationship.REQUIRES_REVIEW}:
+                    if harvest_name_sim >= IDENTITY_CONFIRM_MIN_NAME_SIM:
+                        relationship = Relationship.SAME_ENTITY
             else:
-                score += 14.0
-                reasons.append("exact_domain_match")
-            if relationship in {Relationship.UNKNOWN, Relationship.REQUIRES_REVIEW}:
-                relationship = Relationship.SAME_ENTITY
+                score += 3.0
+                reasons.append("domain_match_without_name_alignment")
+                relationship = Relationship.REQUIRES_REVIEW
         else:
             score -= 15.0
             reasons.append("domain_conflict")
@@ -335,6 +368,61 @@ def classify_match_status(
     return status
 
 
+def apply_identity_gates(
+    company: CompanyInput,
+    candidate: LinkedInCandidate | None,
+    score: float,
+    status: MatchStatus,
+    relationship: Relationship,
+) -> tuple[float, MatchStatus, Relationship, list[str]]:
+    """Cap score/status when legal name does not align with LinkedIn/Harvest identity."""
+    reasons: list[str] = []
+    if candidate is None:
+        return score, status, relationship, reasons
+
+    core = core_name(company.legal_name)
+    element = candidate.harvest or {}
+    harvest_name = element.get("name") if isinstance(element, dict) else None
+    universal = element.get("universalName") if isinstance(element, dict) else candidate.universal_name_guess
+    slug = str(universal or slug_from_linkedin_url(candidate.linkedin_url) or "").replace("-", " ")
+
+    harvest_sim = name_similarity(core, str(harvest_name or "")) if harvest_name else 0.0
+    slug_cov = token_coverage(company.legal_name, slug)
+    uni_cov = token_coverage(company.legal_name, slug)
+    best_cov = max(slug_cov, uni_cov)
+
+    weak_identity = False
+    if harvest_name and harvest_sim < 55:
+        weak_identity = True
+        reasons.append("identity_gate_commercial_divergence")
+    elif harvest_name and harvest_sim < IDENTITY_CONFIRM_MIN_NAME_SIM and best_cov < IDENTITY_CONFIRM_MIN_TOKEN_COVERAGE:
+        weak_identity = True
+        reasons.append("identity_gate_low_name_and_token_coverage")
+    elif not harvest_name and best_cov < IDENTITY_CONFIRM_MIN_TOKEN_COVERAGE:
+        weak_identity = True
+        reasons.append("identity_gate_low_token_coverage")
+
+    if not weak_identity:
+        return score, status, relationship, reasons
+
+    score = min(score, IDENTITY_GATE_MAX_SCORE)
+    relationship = Relationship.REQUIRES_REVIEW
+
+    if harvest_sim < 55 or best_cov < 0.15:
+        score = min(score, IDENTITY_GATE_AMBIGUOUS_MAX_SCORE)
+        status = MatchStatus.AMBIGUOUS
+        reasons.append("identity_gate_ambiguous")
+    elif status in {MatchStatus.CONFIRMED, MatchStatus.HIGH_CONFIDENCE}:
+        status = MatchStatus.PROBABLE
+        reasons.append("identity_gate_downgrade_probable")
+    elif status == MatchStatus.PROBABLE and harvest_sim < 60:
+        status = MatchStatus.AMBIGUOUS
+        score = min(score, IDENTITY_GATE_AMBIGUOUS_MAX_SCORE)
+        reasons.append("identity_gate_downgrade_ambiguous")
+
+    return _clamp(score), status, relationship, reasons
+
+
 def confidence_from_status(score: float, status: MatchStatus) -> float:
     if status == MatchStatus.NOT_FOUND:
         return min(score, 35.0)
@@ -355,7 +443,11 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
         else:
             existing.google_evidences.append(ev)
 
-    candidates = list(by_domain.values())
+    candidates = [
+        c
+        for c in by_domain.values()
+        if not is_non_corporate_website_domain(c.domain, legal_name)
+    ]
     for cand in candidates:
         score = 0.0
         for ev in cand.google_evidences:

@@ -43,6 +43,7 @@ from .normalization import (
     slug_from_linkedin_url,
 )
 from .scoring import (
+    apply_identity_gates,
     build_website_candidates,
     candidate_debug_dict,
     classify_match_status,
@@ -147,6 +148,32 @@ def _empty_result(company: CompanyInput, *, error: str | None = None, status: Ma
         evidence_summary=error or "No LinkedIn company candidates found.",
         enriched_at=datetime.now(timezone.utc).isoformat(),
     )
+
+
+def _finalize_status_and_confidence(
+    company: CompanyInput,
+    selected: LinkedInCandidate | None,
+    second_score: float | None,
+) -> tuple[MatchStatus, float, Relationship]:
+    if selected is None:
+        return MatchStatus.NOT_FOUND, 0.0, Relationship.UNKNOWN
+    status = classify_match_status(
+        selected.final_score,
+        second_score,
+        has_candidates=True,
+    )
+    score, status, relationship, gate_reasons = apply_identity_gates(
+        company,
+        selected,
+        selected.final_score,
+        status,
+        selected.relationship,
+    )
+    if gate_reasons:
+        selected.score_reasons = list(selected.score_reasons) + gate_reasons
+    selected.final_score = score
+    confidence = confidence_from_status(score, status)
+    return status, confidence, relationship
 
 
 def _build_evidence_summary(
@@ -356,13 +383,7 @@ async def resolve_company(
 
     selected = candidates[0] if candidates else None
     second_score = candidates[1].final_score if len(candidates) > 1 else None
-    status = classify_match_status(
-        selected.final_score if selected else 0.0,
-        second_score,
-        has_candidates=bool(candidates),
-    )
-    confidence = confidence_from_status(selected.final_score if selected else 0.0, status)
-    relationship = selected.relationship if selected else Relationship.UNKNOWN
+    status, confidence, relationship = _finalize_status_and_confidence(company, selected, second_score)
     commercial_name = (selected.harvest or {}).get("name") if selected and selected.harvest else None
     ai_decision_dict: dict[str, Any] | None = None
 
@@ -449,13 +470,9 @@ async def resolve_company(
             candidates.sort(key=lambda c: c.final_score, reverse=True)
             selected = candidates[0] if candidates else None
             second_score = candidates[1].final_score if len(candidates) > 1 else None
-            status = classify_match_status(
-                selected.final_score if selected else 0.0,
-                second_score,
-                has_candidates=bool(candidates),
+            status, confidence, relationship = _finalize_status_and_confidence(
+                company, selected, second_score
             )
-            confidence = confidence_from_status(selected.final_score if selected else 0.0, status)
-            relationship = selected.relationship if selected else Relationship.UNKNOWN
             commercial_name = (selected.harvest or {}).get("name") if selected and selected.harvest else None
 
     # Optional AI for ambiguous cases — never replaces deterministic pipeline wholesale
@@ -486,8 +503,11 @@ async def resolve_company(
                 commercial_name = ai_decision.commercial_name
             if ai_decision.confidence is not None:
                 # Blend AI confidence lightly with deterministic score
-                confidence = round((selected.final_score * 0.6) + (ai_decision.confidence * 0.4), 2)
-            status = classify_match_status(confidence, None, has_candidates=True)
+                selected.final_score = round(
+                    (selected.final_score * 0.6) + (ai_decision.confidence * 0.4),
+                    2,
+                )
+            status, confidence, relationship = _finalize_status_and_confidence(company, selected, None)
 
     return _result_from_selection(
         company,

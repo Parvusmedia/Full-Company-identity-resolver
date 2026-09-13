@@ -97,6 +97,51 @@ def core_name(legal_name: str) -> str:
     return normalize_text(remove_legal_forms(legal_name))
 
 
+_TOKEN_STOPWORDS = frozenset(
+    {
+        "de",
+        "la",
+        "las",
+        "los",
+        "el",
+        "y",
+        "e",
+        "del",
+        "sa",
+        "sl",
+        "slu",
+        "sau",
+        "sal",
+        "sociedad",
+        "limitada",
+        "anonima",
+        "unipersonal",
+        "the",
+        "and",
+        "for",
+    }
+)
+
+
+def significant_tokens(value: str | None, *, min_len: int = 3) -> set[str]:
+    """Tokens from legal/core name used for overlap checks (not fuzzy ratio)."""
+    core = core_name(value or "") if value else normalize_text(value or "")
+    return {t for t in core.split() if len(t) >= min_len and t not in _TOKEN_STOPWORDS}
+
+
+def token_coverage(reference: str | None, candidate: str | None) -> float:
+    """Share of reference tokens that appear in the candidate string."""
+    ref = significant_tokens(reference or "")
+    if not ref:
+        return 0.0
+    cand_blob = normalize_text((candidate or "").replace("-", " "))
+    if not cand_blob:
+        return 0.0
+    cand_tokens = set(cand_blob.split())
+    hits = sum(1 for t in ref if t in cand_tokens)
+    return hits / len(ref)
+
+
 def slug_from_linkedin_url(url: str) -> str | None:
     normalized = normalize_linkedin_company_url(url)
     if not normalized:

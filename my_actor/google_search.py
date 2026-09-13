@@ -14,6 +14,7 @@ from .normalization import (
     is_linkedin_company_url,
     normalize_linkedin_company_url,
     remove_legal_forms,
+    token_coverage,
 )
 
 
@@ -39,6 +40,53 @@ _WEBSITE_NOISE_DOMAINS = {
     "emis.com",
     "dnb.com",
 }
+
+# Sector directories, trade press, aggregators — not the company's own site.
+_WEBSITE_DIRECTORY_DOMAINS = {
+    "alimarket.es",
+    "farmacias.es",
+    "smartgridsinfo.es",
+    "construnews.com",
+    "paginasgalegas.com",
+    "leadingcourses.com",
+    "radio.es",
+    "infocif.es",
+    "einforma.com",
+    "axesor.es",
+    "empresite.eleconomista.es",
+    "expansion.com",
+    "cincodias.elpais.com",
+}
+
+# Public-sector / institutional sites (wrong unless legal name aligns).
+_WEBSITE_INSTITUTIONAL_DOMAINS = {
+    "barcelona.cat",
+    "madrid.es",
+    "gencat.cat",
+    "xunta.gal",
+    "juntadeandalucia.es",
+}
+
+
+def is_non_corporate_website_domain(domain: str | None, legal_name: str) -> bool:
+    """True when the domain is unlikely to be the company's official website."""
+    if not domain:
+        return False
+    dom = domain.lower().strip().removeprefix("www.")
+    if dom in _WEBSITE_NOISE_DOMAINS or dom in _WEBSITE_DIRECTORY_DOMAINS:
+        return True
+    if dom in _WEBSITE_INSTITUTIONAL_DOMAINS:
+        return True
+    if any(dom.endswith(f".{d}") for d in _WEBSITE_NOISE_DOMAINS):
+        return True
+    label = dom.split(".")[0]
+    if token_coverage(legal_name, label) >= 0.34:
+        return False
+    # Generic multi-tenant / listing hosts without name overlap
+    listing_hosts = ("blogspot.com", "wordpress.com", "wixsite.com", "squarespace.com")
+    if any(dom == h or dom.endswith("." + h) for h in listing_hosts):
+        return True
+    return dom in _WEBSITE_DIRECTORY_DOMAINS
 
 
 def build_linkedin_query(legal_name: str) -> str:
@@ -166,6 +214,8 @@ def filter_website_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvid
             continue
         domain = extract_registrable_domain(ev.url) or host
         if domain in _WEBSITE_NOISE_DOMAINS or any(domain.endswith(f".{d}") for d in _WEBSITE_NOISE_DOMAINS):
+            continue
+        if domain in _WEBSITE_DIRECTORY_DOMAINS or domain in _WEBSITE_INSTITUTIONAL_DOMAINS:
             continue
         # Government gazettes / random PDFs are weak website signals
         path = urlparse(ev.url).path.lower()
