@@ -1,0 +1,4 @@
+{
+  "name": "Full Company Identity Resolver",
+  "install": "bash .cursor/install.sh"
+}
