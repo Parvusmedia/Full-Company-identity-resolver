@@ -60,6 +60,8 @@ class ActorSettings(BaseModel):
     harvest_concurrency: int = 3
     fallback_google_by_website: bool = True
     fallback_confidence_threshold: int = 78
+    fallback_harvest_search: bool = True
+    fallback_homepage_linkedin: bool = True
     use_ai_for_ambiguous: bool = False
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
@@ -81,6 +83,7 @@ class GoogleEvidence(BaseModel):
 class LinkedInCandidate(BaseModel):
     linkedin_url: str
     universal_name_guess: str | None = None
+    discovery_source: str = "google"
     google_evidences: list[GoogleEvidence] = Field(default_factory=list)
     pre_score: float = 0.0
     pre_score_reasons: list[str] = Field(default_factory=list)
@@ -150,6 +153,7 @@ class ResolutionResult(BaseModel):
     candidates_enriched: int = 0
     google_queries_used: list[str] = Field(default_factory=list)
     harvest_queries_used: list[str] = Field(default_factory=list)
+    discovery_sources_used: list[str] = Field(default_factory=list)
     enrichment_status: str = "pending"
     enriched_at: str | None = None
     error: str | None = None

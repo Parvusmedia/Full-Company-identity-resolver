@@ -27,6 +27,15 @@ from tests.test_identity_scoring import (
     test_pre_score_albrok_still_ranks,
     test_true_brand_not_dropped,
 )
+from tests.test_discovery import (
+    test_candidate_page_urls,
+    test_discovery_flags_and_rollback,
+    test_extract_linkedin_company_urls,
+    test_homepage_pre_score_bonus,
+    test_linkedin_url_from_harvest,
+    test_needs_discovery_and_merge,
+    test_search_queries_include_core_name,
+)
 
 
 def test_json_files() -> None:
@@ -163,6 +172,13 @@ def main() -> None:
     test_true_brand_not_dropped()
     test_directory_domains_rejected()
     test_pre_score_albrok_still_ranks()
+    test_extract_linkedin_company_urls()
+    test_candidate_page_urls()
+    test_linkedin_url_from_harvest()
+    test_homepage_pre_score_bonus()
+    test_discovery_flags_and_rollback()
+    test_needs_discovery_and_merge()
+    test_search_queries_include_core_name()
     print("\nAll local checks passed.")
 
 

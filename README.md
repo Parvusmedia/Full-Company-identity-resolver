@@ -17,9 +17,18 @@ relationship and confidence with explainable evidence.
 6. Reject personal profiles, jobs, school, showcase, posts, pulse
 7. Cheap pre-score → enrich top 1–3 candidates with HarvestAPI
 8. Final score combining Google + Harvest
-9. Optional third Google query by domain when confidence is low
-10. Optional OpenAI only for ambiguous cases
-11. Push **one** dataset item per input company
+9. If still empty or confidence is low:
+   - GET the company website once and extract `linkedin.com/company/*`
+   - HarvestAPI `search` by legal/core name
+   Then Harvest-by-URL for any new candidates
+10. Optional extra Google query by domain when confidence is still low
+11. Optional OpenAI only for ambiguous cases
+12. Push **one** dataset item per input company
+
+Discovery steps 9 are **on by default**. To restore the previous Google →
+Harvest-by-URL-only pipeline (rollback), set `fallback_harvest_search=false`
+and `fallback_homepage_linkedin=false`. See
+[docs/PIPELINE_GOOGLE_ONLY.md](docs/PIPELINE_GOOGLE_ONLY.md) (commit `6622d3b`).
 
 ## Project layout
 
@@ -41,6 +50,7 @@ Dockerfile
 requirements.txt
 README.md
 docs/SECRETS_PLAN_B.md
+docs/PIPELINE_GOOGLE_ONLY.md
 scripts/load_n8n_vars.py
 ```
 
@@ -156,8 +166,11 @@ X-API-Key: <HARVEST_API_KEY>
 ?url=https://www.linkedin.com/company/empresa/
 ```
 
-Also supports `universalName` and `search`. The Actor uses `url` for candidates
-discovered by Google. Response `element` fields are mapped into the output row.
+Also supports `universalName` and `search`. Google-discovered candidates are
+enriched with `url`. When Google finds no company page (or confidence is low),
+the Actor can also call `search` and scrape LinkedIn links from the homepage.
+Disable those fallbacks to restore URL-only Harvest — see
+[docs/PIPELINE_GOOGLE_ONLY.md](docs/PIPELINE_GOOGLE_ONLY.md).
 
 ## Notes
 

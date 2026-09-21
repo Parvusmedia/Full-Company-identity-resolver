@@ -106,6 +106,15 @@ def compute_pre_score(
         score += 8.0
         reasons.append("city_or_province_in_google")
 
+    homepage_hit = candidate.discovery_source == "homepage" or any(
+        ev.query_type == "homepage" for ev in candidate.google_evidences
+    )
+    if homepage_hit:
+        score += 15.0
+        reasons.append("found_on_company_homepage")
+    elif candidate.discovery_source == "harvest_search":
+        reasons.append("discovered_via_harvest_search")
+
     return _clamp(score), reasons
 
 
@@ -386,6 +395,7 @@ def candidate_debug_dict(candidate: LinkedInCandidate, *, debug: bool) -> dict[s
     data: dict[str, Any] = {
         "linkedin_url": candidate.linkedin_url,
         "universal_name_guess": candidate.universal_name_guess,
+        "discovery_source": candidate.discovery_source,
         "pre_score": candidate.pre_score,
         "pre_score_reasons": candidate.pre_score_reasons,
         "final_score": candidate.final_score,

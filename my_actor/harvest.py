@@ -8,6 +8,8 @@ from typing import Any
 import httpx
 from apify import Actor
 
+from .normalization import normalize_linkedin_company_url
+
 HARVEST_COMPANY_URL = "https://api.harvest-api.com/linkedin/company"
 
 
@@ -61,6 +63,77 @@ class HarvestClient:
         if "universalName" in payload or "linkedinUrl" in payload or "name" in payload:
             return payload
         return None
+
+
+def linkedin_url_from_harvest(element: dict[str, Any] | None) -> str | None:
+    """Best LinkedIn company URL from a Harvest company object."""
+    if not isinstance(element, dict):
+        return None
+    for key in ("linkedinUrl", "linkedin_url", "url"):
+        value = element.get(key)
+        if isinstance(value, str) and value.strip():
+            normalized = normalize_linkedin_company_url(value)
+            if normalized:
+                return normalized
+    universal = element.get("universalName") or element.get("universal_name")
+    if isinstance(universal, str) and universal.strip():
+        slug = universal.strip().strip("/")
+        if "/" in slug:
+            slug = slug.rstrip("/").split("/")[-1]
+        return normalize_linkedin_company_url(f"https://www.linkedin.com/company/{slug}/")
+    return None
+
+
+def harvest_element_from_payload(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+    element = payload.get("element")
+    if isinstance(element, dict):
+        return element
+    elements = payload.get("elements")
+    if isinstance(elements, list):
+        first = next((item for item in elements if isinstance(item, dict)), None)
+        if first:
+            return first
+    if "universalName" in payload or "linkedinUrl" in payload or "name" in payload:
+        return payload
+    return None
+
+
+async def search_company_with_harvest(
+    query: str,
+    *,
+    api_key: str | None,
+    concurrency: int = 3,
+) -> dict[str, Any]:
+    """Search Harvest by company name. Returns {element, raw, error, linkedin_url}."""
+    q = (query or "").strip()
+    if not q:
+        return {"element": None, "raw": None, "error": "empty_search", "linkedin_url": None}
+    if not api_key:
+        Actor.log.warning("No HARVEST_API_KEY available; skipping Harvest search.")
+        return {"element": None, "raw": None, "error": "missing_harvest_api_key", "linkedin_url": None}
+
+    client = HarvestClient(api_key, concurrency=concurrency)
+    try:
+        raw = await client.get_company(search=q)
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code if exc.response is not None else "?"
+        if status == 404:
+            return {"element": None, "raw": None, "error": None, "linkedin_url": None}
+        Actor.log.warning("Harvest search HTTP error (status=%s)", status)
+        return {"element": None, "raw": None, "error": f"http_{status}", "linkedin_url": None}
+    except Exception as exc:  # noqa: BLE001
+        Actor.log.warning("Harvest search failed: %s", type(exc).__name__)
+        return {"element": None, "raw": None, "error": type(exc).__name__, "linkedin_url": None}
+
+    element = harvest_element_from_payload(raw)
+    return {
+        "element": element,
+        "raw": raw,
+        "error": None,
+        "linkedin_url": linkedin_url_from_harvest(element),
+    }
 
 
 async def enrich_candidates_with_harvest(
