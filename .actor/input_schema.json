@@ -130,12 +130,26 @@
     },
     "fallback_confidence_threshold": {
       "title": "Fallback confidence threshold",
-      "description": "Run domain fallback Google search when selected confidence is below this value.",
+      "description": "Run domain fallback Google search and discovery fallbacks when selected confidence is below this value.",
       "type": "integer",
       "editor": "number",
       "default": 78,
       "minimum": 0,
       "maximum": 100
+    },
+    "fallback_harvest_search": {
+      "title": "Fallback Harvest search",
+      "description": "If no LinkedIn candidate or confidence is low, search HarvestAPI by legal/core name (not only by URL). Set false to restore Google-only discovery — see docs/PIPELINE_GOOGLE_ONLY.md.",
+      "type": "boolean",
+      "editor": "checkbox",
+      "default": true
+    },
+    "fallback_homepage_linkedin": {
+      "title": "Fallback homepage LinkedIn scrape",
+      "description": "If no LinkedIn candidate or confidence is low, GET the company website once and extract linkedin.com/company links. Set false to restore Google-only discovery — see docs/PIPELINE_GOOGLE_ONLY.md.",
+      "type": "boolean",
+      "editor": "checkbox",
+      "default": true
     },
     "use_ai_for_ambiguous": {
       "title": "Use AI for ambiguous cases",

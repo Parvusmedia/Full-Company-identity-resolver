@@ -26,7 +26,9 @@ from .harvest import (
     harvest_industry,
     harvest_logo_url,
     harvest_phone,
+    search_company_with_harvest,
 )
+from .homepage import HOMEPAGE_QUERY, scrape_homepage_linkedin_urls
 from .models import (
     ActorSettings,
     CompanyInput,
@@ -39,7 +41,9 @@ from .models import (
 from .normalization import (
     core_name,
     extract_registrable_domain,
+    is_website_noise_domain,
     normalize_linkedin_company_url,
+    remove_legal_forms,
     slug_from_linkedin_url,
 )
 from .scoring import (
@@ -106,6 +110,8 @@ def settings_from_input(raw_input: dict[str, Any], *, env_token: str | None, env
         harvest_concurrency=int(raw_input.get("harvest_concurrency") or 3),
         fallback_google_by_website=bool(raw_input.get("fallback_google_by_website", True)),
         fallback_confidence_threshold=int(raw_input.get("fallback_confidence_threshold") or 78),
+        fallback_harvest_search=bool(raw_input.get("fallback_harvest_search", True)),
+        fallback_homepage_linkedin=bool(raw_input.get("fallback_homepage_linkedin", True)),
         use_ai_for_ambiguous=bool(raw_input.get("use_ai_for_ambiguous", False)),
         openai_api_key=(env_openai or raw_input.get("openai_api_key") or None),
         openai_model=raw_input.get("openai_model") or "gpt-4o-mini",
@@ -132,6 +138,135 @@ def _dedupe_linkedin_candidates(evidences: list[GoogleEvidence]) -> list[LinkedI
         else:
             by_url[normalized].google_evidences.append(ev)
     return [by_url[url] for url in order]
+
+
+def _needs_discovery(selected: LinkedInCandidate | None, confidence: float, threshold: int) -> bool:
+    return selected is None or confidence < threshold
+
+
+def _merge_linkedin_candidate(
+    candidates: list[LinkedInCandidate],
+    url: str,
+    *,
+    discovery_source: str,
+    evidences: list[GoogleEvidence] | None = None,
+    harvest: dict[str, Any] | None = None,
+    harvest_error: str | None = None,
+) -> LinkedInCandidate | None:
+    """Add a candidate or attach evidence to an existing URL. Returns new candidate or None if merged."""
+    normalized = normalize_linkedin_company_url(url)
+    if not normalized:
+        return None
+    for cand in candidates:
+        if cand.linkedin_url != normalized:
+            continue
+        if evidences:
+            cand.google_evidences.extend(evidences)
+        if harvest and not cand.harvest:
+            cand.harvest = harvest
+            cand.harvest_error = harvest_error
+        if cand.discovery_source == "google" and discovery_source != "google":
+            # Keep google as primary source; homepage/search are extra evidence.
+            pass
+        elif cand.discovery_source != "google":
+            pass
+        return None
+    cand = LinkedInCandidate(
+        linkedin_url=normalized,
+        universal_name_guess=slug_from_linkedin_url(normalized),
+        discovery_source=discovery_source,
+        google_evidences=list(evidences or []),
+        harvest=harvest,
+        harvest_error=harvest_error,
+    )
+    candidates.append(cand)
+    return cand
+
+
+def _pre_score_new(company: CompanyInput, new_candidates: list[LinkedInCandidate]) -> None:
+    for cand in new_candidates:
+        pre_score, reasons = compute_pre_score(company, cand)
+        cand.pre_score = pre_score
+        cand.pre_score_reasons = reasons
+
+
+async def _enrich_new_by_url(
+    new_candidates: list[LinkedInCandidate],
+    *,
+    settings: ActorSettings,
+    harvest_queries_used: list[str],
+    top_n: int,
+) -> None:
+    to_enrich = [c for c in new_candidates if not c.harvest][: max(1, top_n)]
+    if not to_enrich:
+        return
+    harvest_map = await enrich_candidates_with_harvest(
+        [c.linkedin_url for c in to_enrich],
+        api_key=settings.harvest_api_key,
+        concurrency=settings.harvest_concurrency,
+    )
+    for cand in to_enrich:
+        payload = harvest_map.get(cand.linkedin_url) or {}
+        cand.harvest = payload.get("element")
+        cand.harvest_error = payload.get("error")
+        harvest_queries_used.append(cand.linkedin_url)
+
+
+def _rescore_and_select(
+    company: CompanyInput,
+    candidates: list[LinkedInCandidate],
+    website_candidates: list[Any],
+) -> tuple[LinkedInCandidate | None, MatchStatus, float, Relationship, str | None]:
+    for cand in candidates:
+        final_score, reasons, relationship = compute_final_score(company, cand, website_candidates)
+        cand.final_score = final_score
+        cand.score_reasons = reasons
+        cand.relationship = relationship
+    candidates.sort(key=lambda c: c.final_score, reverse=True)
+    selected = candidates[0] if candidates else None
+    second_score = candidates[1].final_score if len(candidates) > 1 else None
+    status = classify_match_status(
+        selected.final_score if selected else 0.0,
+        second_score,
+        has_candidates=bool(candidates),
+    )
+    confidence = confidence_from_status(selected.final_score if selected else 0.0, status)
+    relationship = selected.relationship if selected else Relationship.UNKNOWN
+    commercial_name = (selected.harvest or {}).get("name") if selected and selected.harvest else None
+    return selected, status, confidence, relationship, commercial_name
+
+
+def _website_urls_for_homepage(website_candidates: list[Any], selected: LinkedInCandidate | None) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for item in website_candidates[:2]:
+        url = getattr(item, "url", None)
+        domain = getattr(item, "domain", None)
+        if not url or is_website_noise_domain(domain):
+            continue
+        key = url.rstrip("/")
+        if key not in seen:
+            seen.add(key)
+            urls.append(url)
+    if selected and selected.harvest:
+        harvest_site = selected.harvest.get("website")
+        if isinstance(harvest_site, str) and harvest_site.strip():
+            domain = extract_registrable_domain(harvest_site)
+            if not is_website_noise_domain(domain):
+                key = harvest_site.strip().rstrip("/")
+                if key not in seen:
+                    seen.add(key)
+                    urls.append(harvest_site.strip())
+    return urls[:2]
+
+
+def _search_queries_for_company(company: CompanyInput) -> list[str]:
+    legal = company.legal_name.strip()
+    core = remove_legal_forms(legal).strip()
+    queries = [legal]
+    if core and core.casefold() != legal.casefold():
+        queries.append(core)
+    return queries
 
 
 def _empty_result(company: CompanyInput, *, error: str | None = None, status: MatchStatus = MatchStatus.NOT_FOUND) -> ResolutionResult:
@@ -181,6 +316,7 @@ def _result_from_selection(
     website_candidates: list[Any],
     google_queries_used: list[str],
     harvest_queries_used: list[str],
+    discovery_sources_used: list[str],
     status: MatchStatus,
     confidence: float,
     relationship: Relationship,
@@ -195,6 +331,8 @@ def _result_from_selection(
     if selected is None:
         result = _empty_result(company, error=error, status=status)
         result.google_queries_used = google_queries_used
+        result.harvest_queries_used = harvest_queries_used
+        result.discovery_sources_used = discovery_sources_used
         result.candidates_found = len(all_candidates)
         result.google_website = google_website
         result.domain = google_domain
@@ -281,6 +419,7 @@ def _result_from_selection(
         candidates_enriched=sum(1 for c in all_candidates if c.harvest),
         google_queries_used=google_queries_used,
         harvest_queries_used=harvest_queries_used,
+        discovery_sources_used=discovery_sources_used,
         enrichment_status=enrichment_status,
         enriched_at=datetime.now(timezone.utc).isoformat(),
         error=error or selected.harvest_error,
@@ -346,31 +485,112 @@ async def resolve_company(
         cand.harvest_error = payload.get("error")
         harvest_queries_used.append(cand.linkedin_url)
 
-    for cand in candidates:
-        final_score, reasons, relationship = compute_final_score(company, cand, website_candidates)
-        cand.final_score = final_score
-        cand.score_reasons = reasons
-        cand.relationship = relationship
-
-    candidates.sort(key=lambda c: c.final_score, reverse=True)
-
-    selected = candidates[0] if candidates else None
-    second_score = candidates[1].final_score if len(candidates) > 1 else None
-    status = classify_match_status(
-        selected.final_score if selected else 0.0,
-        second_score,
-        has_candidates=bool(candidates),
+    selected, status, confidence, relationship, commercial_name = _rescore_and_select(
+        company, candidates, website_candidates
     )
-    confidence = confidence_from_status(selected.final_score if selected else 0.0, status)
-    relationship = selected.relationship if selected else Relationship.UNKNOWN
-    commercial_name = (selected.harvest or {}).get("name") if selected and selected.harvest else None
     ai_decision_dict: dict[str, Any] | None = None
+    discovery_sources_used: list[str] = []
 
-    # Optional domain fallback when confidence is low
+    # Homepage scrape + Harvest name search when Google URL-only discovery is weak.
+    # Rollback: set fallback_homepage_linkedin / fallback_harvest_search to false
+    # (see docs/PIPELINE_GOOGLE_ONLY.md).
+    if _needs_discovery(selected, confidence, settings.fallback_confidence_threshold):
+        if settings.fallback_homepage_linkedin:
+            for site in _website_urls_for_homepage(website_candidates, selected):
+                Actor.log.info(
+                    "Low confidence (%.1f); scraping homepage LinkedIn links for %s",
+                    confidence,
+                    core_name(company.legal_name) or company.legal_name,
+                )
+                found_urls = await scrape_homepage_linkedin_urls(site)
+                if not found_urls:
+                    continue
+                discovery_sources_used.append(f"homepage:{site}")
+                new_from_home: list[LinkedInCandidate] = []
+                for linkedin_url in found_urls:
+                    evidence = GoogleEvidence(
+                        query=f"homepage:{site}",
+                        query_type=HOMEPAGE_QUERY,
+                        position=1,
+                        title=None,
+                        snippet="linkedin.com/company link on company website",
+                        url=linkedin_url,
+                        domain="linkedin.com",
+                    )
+                    created = _merge_linkedin_candidate(
+                        candidates,
+                        linkedin_url,
+                        discovery_source="homepage",
+                        evidences=[evidence],
+                    )
+                    if created:
+                        new_from_home.append(created)
+                if new_from_home:
+                    _pre_score_new(company, new_from_home)
+                    await _enrich_new_by_url(
+                        new_from_home,
+                        settings=settings,
+                        harvest_queries_used=harvest_queries_used,
+                        top_n=top_n,
+                    )
+                # Recompute pre_score for merged homepage evidence on existing candidates
+                for cand in candidates:
+                    if any(ev.query_type == HOMEPAGE_QUERY for ev in cand.google_evidences):
+                        pre_score, reasons = compute_pre_score(company, cand)
+                        cand.pre_score = pre_score
+                        cand.pre_score_reasons = reasons
+                selected, status, confidence, relationship, commercial_name = _rescore_and_select(
+                    company, candidates, website_candidates
+                )
+                if not _needs_discovery(selected, confidence, settings.fallback_confidence_threshold):
+                    break
+
+        if settings.fallback_harvest_search and _needs_discovery(
+            selected, confidence, settings.fallback_confidence_threshold
+        ):
+            for query in _search_queries_for_company(company):
+                Actor.log.info(
+                    "Low confidence (%.1f); Harvest search by name for %s",
+                    confidence,
+                    core_name(company.legal_name) or company.legal_name,
+                )
+                payload = await search_company_with_harvest(
+                    query,
+                    api_key=settings.harvest_api_key,
+                    concurrency=settings.harvest_concurrency,
+                )
+                harvest_queries_used.append(f"search:{query}")
+                discovery_sources_used.append(f"harvest_search:{query}")
+                linkedin_url = payload.get("linkedin_url")
+                element = payload.get("element")
+                if not linkedin_url:
+                    continue
+                created = _merge_linkedin_candidate(
+                    candidates,
+                    linkedin_url,
+                    discovery_source="harvest_search",
+                    harvest=element if isinstance(element, dict) else None,
+                    harvest_error=payload.get("error"),
+                )
+                if created:
+                    _pre_score_new(company, [created])
+                    if not created.harvest:
+                        await _enrich_new_by_url(
+                            [created],
+                            settings=settings,
+                            harvest_queries_used=harvest_queries_used,
+                            top_n=1,
+                        )
+                selected, status, confidence, relationship, commercial_name = _rescore_and_select(
+                    company, candidates, website_candidates
+                )
+                if not _needs_discovery(selected, confidence, settings.fallback_confidence_threshold):
+                    break
+
+    # Optional domain fallback when confidence is still low
     if (
         settings.fallback_google_by_website
-        and selected is not None
-        and confidence < settings.fallback_confidence_threshold
+        and _needs_discovery(selected, confidence, settings.fallback_confidence_threshold)
     ):
         domain = None
         if website_candidates:
@@ -418,6 +638,7 @@ async def resolve_company(
                     LinkedInCandidate(
                         linkedin_url=normalized,
                         universal_name_guess=slug_from_linkedin_url(normalized),
+                        discovery_source="domain_fallback",
                         google_evidences=[ev],
                     )
                 )
@@ -496,6 +717,7 @@ async def resolve_company(
         website_candidates=website_candidates,
         google_queries_used=google_queries_used,
         harvest_queries_used=harvest_queries_used,
+        discovery_sources_used=discovery_sources_used,
         status=status,
         confidence=confidence,
         relationship=relationship,
