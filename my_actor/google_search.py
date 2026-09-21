@@ -12,6 +12,7 @@ from .models import GoogleEvidence
 from .normalization import (
     extract_registrable_domain,
     is_linkedin_company_url,
+    is_website_noise_domain,
     normalize_linkedin_company_url,
     remove_legal_forms,
 )
@@ -21,25 +22,6 @@ LINKEDIN_QUERY = "linkedin"
 WEBSITE_QUERY = "website"
 DOMAIN_FALLBACK_QUERY = "domain_fallback"
 CORE_LINKEDIN_QUERY = "core_linkedin"
-
-_WEBSITE_NOISE_DOMAINS = {
-    "zoominfo.com",
-    "coursehero.com",
-    "facebook.com",
-    "twitter.com",
-    "x.com",
-    "instagram.com",
-    "youtube.com",
-    "wikipedia.org",
-    "crunchbase.com",
-    "bloomberg.com",
-    "yumpu.com",
-    "slideshare.net",
-    "scribd.com",
-    "emis.com",
-    "dnb.com",
-}
-
 
 def build_linkedin_query(legal_name: str) -> str:
     return f'"{legal_name}" linkedin'
@@ -165,7 +147,7 @@ def filter_website_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvid
         if "linkedin.com" in host:
             continue
         domain = extract_registrable_domain(ev.url) or host
-        if domain in _WEBSITE_NOISE_DOMAINS or any(domain.endswith(f".{d}") for d in _WEBSITE_NOISE_DOMAINS):
+        if is_website_noise_domain(domain) or is_website_noise_domain(host):
             continue
         # Government gazettes / random PDFs are weak website signals
         path = urlparse(ev.url).path.lower()

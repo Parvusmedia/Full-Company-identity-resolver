@@ -143,6 +143,11 @@ With `debug=true` the row also includes `candidates`, `website_candidates`,
 
 Close scores between the top two candidates reduce the classification.
 
+Identity caps (see `identity_match_tier`): no distinctive brand-token overlap
+caps confidence at 39 (`not_found`). Short commercial-name subset matches cap at 77.
+Directory sites (Alimarket, TripAdvisor, eInforma, …) never count as the company website.
+Employee/follower/verified bonuses are not part of identity confidence.
+
 ## HarvestAPI
 
 ```http
