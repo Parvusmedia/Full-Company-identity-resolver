@@ -285,14 +285,21 @@ async def main_async(args: argparse.Namespace) -> int:
 
         conf_key = fmap.get("confidence")
         source_key = fmap.get("source_id")
+        enrich_key = fmap.get("enrichment_status")
         targets: list[dict[str, Any]] = []
         for row in records:
             source = str(row.get(source_key)) if source_key and row.get(source_key) is not None else ""
             if source in SKIP_SOURCE_IDS:
                 continue
-            conf = _as_float(row.get(conf_key)) if conf_key else None
-            if conf is None or conf < args.confidence_lt:
-                targets.append(row)
+            if args.only_pending:
+                status = row.get(enrich_key) if enrich_key else row.get("enrichment_status")
+                if status != "pending":
+                    continue
+            else:
+                conf = _as_float(row.get(conf_key)) if conf_key else None
+                if not (conf is None or conf < args.confidence_lt):
+                    continue
+            targets.append(row)
 
         state_path = Path(args.state_file)
         prior = load_run_state(state_path) if args.resume else {}
@@ -313,11 +320,18 @@ async def main_async(args: argparse.Namespace) -> int:
         if processed_ids:
             targets = [row for row in targets if _row_id(row, fmap) not in processed_ids]
 
-        print(
-            f"View rows={len(records)} conf<{args.confidence_lt} (skip 2632) "
-            f"pending={len(targets)}",
-            flush=True,
-        )
+        if args.only_pending:
+            print(
+                f"View rows={len(records)} only_pending=True (skip 2632) "
+                f"targets={len(targets)}",
+                flush=True,
+            )
+        else:
+            print(
+                f"View rows={len(records)} conf<{args.confidence_lt} (skip 2632) "
+                f"targets={len(targets)}",
+                flush=True,
+            )
         if args.limit and args.limit > 0:
             targets = targets[: args.limit]
             print(f"Limited to {len(targets)} rows", flush=True)
@@ -476,11 +490,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--limit", type=int, default=0, help="Max rows to process (0=all)")
     parser.add_argument(
+        "--only-pending",
+        action="store_true",
+        help="Only rows with enrichment_status=pending (separate job from conf<50 re-run)",
+    )
+    parser.add_argument(
         "--state-file",
-        default=os.getenv(
-            "ENRICH_STATE_FILE",
-            "/tmp/enrich-nocodb-vw0q1gm39dsc3d9t.state.json",
-        ),
+        default=None,
         help="Resume state (processed row ids + rolling lift stats)",
     )
     parser.add_argument(
@@ -507,6 +523,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    if not args.state_file:
+        if args.only_pending:
+            args.state_file = os.getenv(
+                "ENRICH_STATE_FILE",
+                "/tmp/enrich-nocodb-pending-only.state.json",
+            )
+        else:
+            args.state_file = os.getenv(
+                "ENRICH_STATE_FILE",
+                "/tmp/enrich-nocodb-vw0q1gm39dsc3d9t.state.json",
+            )
     return asyncio.run(main_async(args))
 
 
