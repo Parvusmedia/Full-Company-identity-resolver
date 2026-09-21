@@ -32,7 +32,7 @@ SKIP_SOURCE_IDS = {"2632"}
 DEST_ALIASES: dict[str, tuple[str, ...]] = {
     "id": ("Id", "id", "ID"),
     "source_id": ("source_id", "Source Id", "sourceId"),
-    "legal_name": ("legal_name", "Legal name", "razon_social", "Razón social", "name", "Name"),
+    "legal_name": ("legal_name", "Legal name", "razon_social", "Razón social", "Title", "name", "Name"),
     "tax_id": ("tax_id", "Tax ID", "cif", "CIF", "nif", "NIF"),
     "city": ("city", "City", "ciudad", "Ciudad"),
     "province": ("province", "Province", "provincia", "Provincia"),
