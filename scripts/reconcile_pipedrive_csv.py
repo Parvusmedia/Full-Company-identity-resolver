@@ -70,6 +70,12 @@ def detect_columns(fieldnames: list[str] | None) -> tuple[str, str]:
         if key in ID_HEADERS:
             id_col = original
     # Pipedrive export often: "Name" + "ID" on Organizations
+    for original in fieldnames:
+        low = _norm_header(original)
+        if not name_col and ("nombre" in low or low.endswith(" name") or low == "name"):
+            name_col = original
+        if not id_col and (low.endswith(" id") or low == "id" or "organización - id" in low):
+            id_col = original
     if not name_col:
         for pref in ("Name", "name", "Organization", "Title"):
             if pref in fieldnames:
@@ -95,7 +101,17 @@ def read_csv_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
         dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
         reader = csv.DictReader(fh, dialect=dialect)
         fields = list(reader.fieldnames or [])
-        rows = [{k: (v or "").strip() for k, v in row.items()} for row in reader]
+        rows = []
+        for row in reader:
+            clean: dict[str, str] = {}
+            for k, v in row.items():
+                if v is None:
+                    clean[k] = ""
+                elif isinstance(v, str):
+                    clean[k] = v.strip()
+                else:
+                    clean[k] = str(v).strip()
+            rows.append(clean)
     return fields, rows
 
 
@@ -158,7 +174,9 @@ async def patch_records(
         json=patches,
         timeout=120.0,
     )
-    response.raise_for_status()
+    if not response.is_success:
+        detail = response.text[:800]
+        raise RuntimeError(f"NocoDB PATCH {response.status_code}: {detail}")
 
 
 async def main_async(args: argparse.Namespace) -> int:
@@ -191,7 +209,7 @@ async def main_async(args: argparse.Namespace) -> int:
         "ambiguous_match": 0,
         "new_companies": 0,
     }
-    updates: list[dict[str, Any]] = []
+    updates_by_id: dict[Any, str] = {}
     new_orgs: list[dict[str, str]] = []
     ambiguous: list[dict[str, Any]] = []
 
@@ -226,8 +244,12 @@ async def main_async(args: argparse.Namespace) -> int:
             if current == pd_id:
                 stats["already_pd"] += 1
                 continue
-            updates.append({"Id": rec["Id"], PD_COLUMN: pd_id})
-            stats["updated_pd"] += 1
+            rid = rec["Id"]
+            if str(updates_by_id.get(rid)) != pd_id:
+                updates_by_id[rid] = pd_id
+                stats["updated_pd"] += 1
+
+        updates = [{"Id": rid, PD_COLUMN: pd} for rid, pd in updates_by_id.items()]
 
         report = {
             "csv": str(path),
