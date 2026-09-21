@@ -11,6 +11,8 @@ from .normalization import (
     contains_branch_terms,
     core_name,
     extract_registrable_domain,
+    identity_match_tier,
+    is_website_noise_domain,
     normalize_text,
     slug_from_linkedin_url,
 )
@@ -20,12 +22,22 @@ def _clamp(score: float, low: float = 0.0, high: float = 100.0) -> float:
     return max(low, min(high, score))
 
 
+# Identity score ceilings applied after bonuses. Weak matches must not look like 50+.
+NO_IDENTITY_CAP = 39.0
+BRAND_ONLY_CAP = 77.0
+
+
 def name_similarity(a: str | None, b: str | None) -> float:
     na = normalize_text(a or "")
     nb = normalize_text(b or "")
     if not na or not nb:
         return 0.0
-    return float(fuzz.token_set_ratio(na, nb))
+    set_r = float(fuzz.token_set_ratio(na, nb))
+    sort_r = float(fuzz.token_sort_ratio(na, nb))
+    ratio_r = float(fuzz.ratio(na, nb))
+    # token_set_ratio alone treats subsets as 100 ("Aon" vs a long legal name,
+    # or a shared region like "Navarra"). Blend in stricter metrics.
+    return (set_r * 0.35) + (sort_r * 0.40) + (ratio_r * 0.25)
 
 
 def position_bonus(position: int | None) -> tuple[float, str | None]:
@@ -165,10 +177,6 @@ def compute_final_score(
     harvest_website = element.get("website") if isinstance(element, dict) else None
     description = element.get("description") if isinstance(element, dict) else None
     tagline = element.get("tagline") if isinstance(element, dict) else None
-    active = element.get("active") if isinstance(element, dict) else None
-    verified = element.get("pageVerified") if isinstance(element, dict) else None
-    employee_count = element.get("employeeCount") if isinstance(element, dict) else None
-    followers = element.get("followerCount") if isinstance(element, dict) else None
     hq = None
     if isinstance(element, dict):
         hq = element.get("headquarter") or element.get("headquarters")
@@ -195,11 +203,20 @@ def compute_final_score(
 
     google_domain = None
     google_host = None
-    if website_candidates:
-        google_domain = website_candidates[0].domain
-        google_host = _host_without_www(website_candidates[0].url)
+    usable_websites = [
+        w
+        for w in website_candidates
+        if not is_website_noise_domain(w.domain) and not is_website_noise_domain(_host_without_www(w.url))
+    ]
+    if usable_websites:
+        google_domain = usable_websites[0].domain
+        google_host = _host_without_www(usable_websites[0].url)
     harvest_domain = extract_registrable_domain(str(harvest_website) if harvest_website else None)
     harvest_host = _host_without_www(str(harvest_website) if harvest_website else None)
+    if is_website_noise_domain(harvest_domain) or is_website_noise_domain(harvest_host):
+        harvest_domain = None
+        harvest_host = None
+        reasons.append("harvest_website_ignored_directory")
 
     if google_domain and harvest_domain:
         if google_domain == harvest_domain:
@@ -255,35 +272,7 @@ def compute_final_score(
             score += 4.0
             reasons.append("description_mentions_name")
 
-    industries = element.get("industries") if isinstance(element, dict) else None
-    if industries:
-        score += 2.0
-        reasons.append("industry_present")
-    if employee_count:
-        try:
-            emp_i = int(employee_count)
-        except (TypeError, ValueError):
-            emp_i = 0
-        if emp_i > 0:
-            score += min(4.0, 1.0 + (emp_i ** 0.5) / 5.0)
-            reasons.append("employees_present")
-    if followers:
-        try:
-            fol_i = int(followers)
-        except (TypeError, ValueError):
-            fol_i = 0
-        if fol_i > 0:
-            score += min(3.0, 0.5 + (fol_i ** 0.5) / 20.0)
-            reasons.append("followers_present")
-    if active is True:
-        score += 3.0
-        reasons.append("page_active")
-    elif active is False:
-        score -= 8.0
-        reasons.append("page_inactive")
-    if verified is True:
-        score += 4.0
-        reasons.append("page_verified")
+    # Popularity (employees, followers, verified) is not identity — omit from score.
 
     # Only treat name/URL as branch signals. Descriptions often mention the company's own network.
     branch_hit = contains_branch_terms(harvest_name, str(universal) if universal else None, candidate.linkedin_url)
@@ -294,6 +283,26 @@ def compute_final_score(
         relationship = Relationship.BRANCH
     elif relationship == Relationship.UNKNOWN and name_similarity(core, str(harvest_name or "")) >= 50:
         relationship = Relationship.COMMERCIAL_BRAND
+
+    slug = (candidate.universal_name_guess or slug_from_linkedin_url(candidate.linkedin_url) or "").replace("-", " ")
+    tier = identity_match_tier(
+        company.legal_name,
+        harvest_name,
+        str(universal) if universal else None,
+        slug,
+        harvest_domain,
+        google_domain,
+    )
+    if tier == "weak":
+        score = min(score, NO_IDENTITY_CAP)
+        reasons.append("identity_cap_weak_token_overlap")
+        if relationship == Relationship.SAME_ENTITY:
+            relationship = Relationship.REQUIRES_REVIEW
+    elif tier == "brand":
+        score = min(score, BRAND_ONLY_CAP)
+        reasons.append("identity_cap_brand_subset")
+        if relationship == Relationship.SAME_ENTITY:
+            relationship = Relationship.COMMERCIAL_BRAND
 
     return _clamp(score), reasons, relationship
 
@@ -346,7 +355,7 @@ def build_website_candidates(evidences: list[GoogleEvidence], legal_name: str) -
     core = core_name(legal_name)
     for ev in evidences:
         domain = extract_registrable_domain(ev.url)
-        if not domain:
+        if not domain or is_website_noise_domain(domain):
             continue
         existing = by_domain.get(domain)
         if existing is None:

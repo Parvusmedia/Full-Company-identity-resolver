@@ -20,6 +20,13 @@ from my_actor.resolver import parse_input_companies
 from my_actor.scoring import classify_match_status, compute_pre_score
 from my_actor.models import GoogleEvidence, ResolutionResult
 from tests.test_load_n8n_vars import test_jwt_aud_and_mcp_skip, test_load_keeps_existing_and_fills_missing
+from tests.test_identity_scoring import (
+    test_directory_domains_rejected,
+    test_false_positives_capped_below_50,
+    test_identity_tiers,
+    test_pre_score_albrok_still_ranks,
+    test_true_brand_not_dropped,
+)
 
 
 def test_json_files() -> None:
@@ -151,6 +158,11 @@ def main() -> None:
     test_match_status_gap()
     test_jwt_aud_and_mcp_skip()
     test_load_keeps_existing_and_fills_missing()
+    test_identity_tiers()
+    test_false_positives_capped_below_50()
+    test_true_brand_not_dropped()
+    test_directory_domains_rejected()
+    test_pre_score_albrok_still_ranks()
     print("\nAll local checks passed.")
 
 
