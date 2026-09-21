@@ -212,6 +212,41 @@ def lift_bucket(conf: float | None) -> str:
     return "ge78"
 
 
+def _row_id(record: dict[str, Any], fmap: dict[str, str]) -> Any:
+    id_key = fmap.get("id")
+    return record.get(id_key) if id_key else None
+
+
+def load_run_state(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_run_state(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+def checkpoint_payload(args: argparse.Namespace, meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "view": args.view,
+        "table": args.table,
+        "confidence_lt": args.confidence_lt,
+        "dry_run": args.dry_run,
+        "disable_discovery": args.disable_discovery,
+        "chunk_size": args.chunk_size,
+        "wave_size": args.wave_size,
+        **meta,
+    }
+
+
 async def main_async(args: argparse.Namespace) -> int:
     flags = load_n8n_vars()
     missing = [name for name, ok in flags.items() if not ok]
@@ -259,18 +294,46 @@ async def main_async(args: argparse.Namespace) -> int:
             if conf is None or conf < args.confidence_lt:
                 targets.append(row)
 
-        print(f"View rows={len(records)} conf<{args.confidence_lt} (skip 2632)={len(targets)}")
+        state_path = Path(args.state_file)
+        prior = load_run_state(state_path) if args.resume else {}
+        processed_ids: set[Any] = set()
+        if args.resume and prior.get("view") == args.view and prior.get("table") == args.table:
+            for pid in prior.get("processed_ids") or []:
+                processed_ids.add(pid)
+            print(
+                f"Resume: skipping {len(processed_ids)} already-processed rows from {state_path}",
+                flush=True,
+            )
+        elif prior and args.resume:
+            print(
+                f"Resume state ignored (view/table mismatch): {state_path}",
+                flush=True,
+            )
+
+        if processed_ids:
+            targets = [row for row in targets if _row_id(row, fmap) not in processed_ids]
+
+        print(
+            f"View rows={len(records)} conf<{args.confidence_lt} (skip 2632) "
+            f"pending={len(targets)}",
+            flush=True,
+        )
         if args.limit and args.limit > 0:
             targets = targets[: args.limit]
-            print(f"Limited to {len(targets)} rows")
+            print(f"Limited to {len(targets)} rows", flush=True)
 
-        snapshot: list[dict[str, Any]] = []
-        written = 0
-        lifted = 0
-        new_linkedin = 0
-        discovery_hits = 0
-        before_buckets: dict[str, int] = {}
-        after_buckets: dict[str, int] = {}
+        snapshot: list[dict[str, Any]] = list(prior.get("rows") or []) if args.resume else []
+        written = int(prior.get("written") or 0) if args.resume else 0
+        lifted = int(prior.get("lifted_to_50plus") or 0) if args.resume else 0
+        new_linkedin = int(prior.get("new_linkedin") or 0) if args.resume else 0
+        discovery_hits = int(prior.get("discovery_hits") or 0) if args.resume else 0
+        before_buckets: dict[str, int] = dict(prior.get("before_buckets") or {}) if args.resume else {}
+        after_buckets: dict[str, int] = dict(prior.get("after_buckets") or {}) if args.resume else {}
+        homepage_hits = int(prior.get("homepage_hits") or 0) if args.resume else 0
+        harvest_search_hits = int(prior.get("harvest_search_hits") or 0) if args.resume else 0
+
+        checkpoint_path = Path(args.checkpoint_file)
+        total_waves = max(1, (len(targets) + args.wave_size - 1) // args.wave_size) if targets else 0
 
         for i in range(0, len(targets), args.wave_size):
             wave = targets[i : i + args.wave_size]
@@ -284,9 +347,15 @@ async def main_async(args: argparse.Namespace) -> int:
                 usable_rows.append(row)
             if not companies:
                 continue
-            print(f"Wave {i // args.wave_size + 1}: resolving {len(companies)} companies (chunk={args.chunk_size})")
+            wave_no = i // args.wave_size + 1
+            print(
+                f"Wave {wave_no}/{total_waves}: resolving {len(companies)} companies "
+                f"(chunk={args.chunk_size})",
+                flush=True,
+            )
             results = await resolve_companies_batch(companies, settings)
             patches: list[dict[str, Any]] = []
+            wave_ids: list[Any] = []
             for row, result in zip(usable_rows, results, strict=True):
                 before = snapshot_row(row, fmap)
                 before_conf = _as_float(before.get("confidence"))
@@ -311,46 +380,84 @@ async def main_async(args: argparse.Namespace) -> int:
                 after_buckets[lift_bucket(after_conf)] = after_buckets.get(lift_bucket(after_conf), 0) + 1
                 if result.discovery_sources_used:
                     discovery_hits += 1
+                for src in result.discovery_sources_used:
+                    if src.startswith("homepage:"):
+                        homepage_hits += 1
+                    elif src.startswith("harvest_search:"):
+                        harvest_search_hits += 1
                 if result.linkedin_url and not before_li:
                     new_linkedin += 1
                 if (before_conf is None or after_conf > before_conf + 1) and after_conf >= 50:
                     lifted += 1
                 patches.append(result_patch(result, row, fmap))
+                rid = _row_id(row, fmap)
+                if rid is not None:
+                    wave_ids.append(rid)
 
             if not args.dry_run and patches:
                 await noco.patch_records(http, patches)
                 written += len(patches)
             elif args.dry_run:
-                print(f"Dry-run: would patch {len(patches)} rows")
+                print(f"Dry-run: would patch {len(patches)} rows", flush=True)
+
+            processed_ids.update(wave_ids)
+            meta = {
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "processed_ids": sorted(processed_ids, key=lambda x: (isinstance(x, str), x)),
+                "before_buckets": before_buckets,
+                "after_buckets": after_buckets,
+                "lifted_to_50plus": lifted,
+                "new_linkedin": new_linkedin,
+                "discovery_hits": discovery_hits,
+                "homepage_hits": homepage_hits,
+                "harvest_search_hits": harvest_search_hits,
+                "written": written,
+                "rows": snapshot,
+            }
+            save_run_state(
+                state_path,
+                checkpoint_payload(args, meta),
+            )
+            checkpoint_path.write_text(
+                json.dumps(checkpoint_payload(args, meta), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            print(
+                f"Checkpoint wave {wave_no}/{total_waves}: written={written} "
+                f"lifted={lifted} new_li={new_linkedin} discovery={discovery_hits} "
+                f"(homepage={homepage_hits} harvest_search={harvest_search_hits})",
+                flush=True,
+            )
 
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         snap_path = Path(f"/tmp/discovery-rerun-{stamp}.json")
-        snap_path.write_text(
-            json.dumps(
-                {
-                    "view": args.view,
-                    "confidence_lt": args.confidence_lt,
-                    "dry_run": args.dry_run,
-                    "disable_discovery": args.disable_discovery,
-                    "before_buckets": before_buckets,
-                    "after_buckets": after_buckets,
-                    "lifted_to_50plus": lifted,
-                    "new_linkedin": new_linkedin,
-                    "discovery_hits": discovery_hits,
-                    "written": written,
-                    "rows": snapshot,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
+        final = checkpoint_payload(
+            args,
+            {
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "before_buckets": before_buckets,
+                "after_buckets": after_buckets,
+                "lifted_to_50plus": lifted,
+                "new_linkedin": new_linkedin,
+                "discovery_hits": discovery_hits,
+                "homepage_hits": homepage_hits,
+                "harvest_search_hits": harvest_search_hits,
+                "written": written,
+                "processed_count": len(processed_ids),
+                "rows": snapshot,
+            },
         )
-        print(f"Snapshot: {snap_path}")
-        print(f"before buckets: {before_buckets}")
-        print(f"after buckets:  {after_buckets}")
+        snap_path.write_text(json.dumps(final, ensure_ascii=False, indent=2), encoding="utf-8")
+        checkpoint_path.write_text(json.dumps(final, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"Snapshot: {snap_path}", flush=True)
+        print(f"Checkpoint: {checkpoint_path}", flush=True)
+        print(f"before buckets: {before_buckets}", flush=True)
+        print(f"after buckets:  {after_buckets}", flush=True)
         print(
             f"lifted_to_50plus={lifted} new_linkedin={new_linkedin} "
-            f"discovery_hits={discovery_hits} written={written}"
+            f"discovery_hits={discovery_hits} homepage_hits={homepage_hits} "
+            f"harvest_search_hits={harvest_search_hits} written={written}",
+            flush=True,
         )
     return 0
 
@@ -360,9 +467,35 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--table", default=DEFAULT_TABLE)
     parser.add_argument("--view", default=DEFAULT_VIEW)
     parser.add_argument("--confidence-lt", type=float, default=50.0)
-    parser.add_argument("--chunk-size", type=int, default=10)
-    parser.add_argument("--wave-size", type=int, default=50)
+    parser.add_argument("--chunk-size", type=int, default=int(os.getenv("CHUNK_SIZE", "10")))
+    parser.add_argument(
+        "--wave-size",
+        type=int,
+        default=int(os.getenv("WAVE_SIZE", "10")),
+        help="NocoDB patch + checkpoint every N rows (default 10; smaller = safer on timeouts)",
+    )
     parser.add_argument("--limit", type=int, default=0, help="Max rows to process (0=all)")
+    parser.add_argument(
+        "--state-file",
+        default=os.getenv(
+            "ENRICH_STATE_FILE",
+            "/tmp/enrich-nocodb-vw0q1gm39dsc3d9t.state.json",
+        ),
+        help="Resume state (processed row ids + rolling lift stats)",
+    )
+    parser.add_argument(
+        "--checkpoint-file",
+        default=os.getenv(
+            "ENRICH_CHECKPOINT_FILE",
+            "/tmp/discovery-rerun-latest.json",
+        ),
+    )
+    parser.add_argument(
+        "--resume",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Skip row ids listed in --state-file for this view/table",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--disable-discovery",
