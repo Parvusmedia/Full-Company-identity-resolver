@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
@@ -108,6 +109,7 @@ def settings_from_input(raw_input: dict[str, Any], *, env_token: str | None, env
         max_harvest_candidates=int(raw_input.get("max_harvest_candidates") or 2),
         harvest_api_key=(env_harvest or raw_input.get("harvest_api_key") or None),
         harvest_concurrency=int(raw_input.get("harvest_concurrency") or 3),
+        resolve_concurrency=int(raw_input.get("resolve_concurrency") or 1),
         fallback_google_by_website=bool(raw_input.get("fallback_google_by_website", True)),
         fallback_confidence_threshold=int(raw_input.get("fallback_confidence_threshold") or 78),
         fallback_harvest_search=bool(raw_input.get("fallback_harvest_search", True)),
@@ -751,17 +753,30 @@ async def resolve_companies_batch(
         batch_size=settings.batch_size,
     )
 
-    results: list[ResolutionResult] = []
-    for company in companies:
-        try:
-            result = await resolve_company(company, settings, prefetched_evidences=all_evidences)
-        except Exception as exc:  # noqa: BLE001
-            Actor.log.exception(
-                "Failed resolving company %s: %s",
-                company.legal_name,
-                type(exc).__name__,
-            )
-            result = _empty_result(company, error=type(exc).__name__, status=MatchStatus.ERROR)
-            result.google_queries_used = build_initial_queries(company.legal_name)
-        results.append(result)
+    resolve_concurrency = max(1, settings.resolve_concurrency)
+    sem = asyncio.Semaphore(resolve_concurrency)
+
+    async def _resolve_one(company: CompanyInput) -> ResolutionResult:
+        async with sem:
+            try:
+                return await resolve_company(company, settings, prefetched_evidences=all_evidences)
+            except Exception as exc:  # noqa: BLE001
+                Actor.log.exception(
+                    "Failed resolving company %s: %s",
+                    company.legal_name,
+                    type(exc).__name__,
+                )
+                result = _empty_result(company, error=type(exc).__name__, status=MatchStatus.ERROR)
+                result.google_queries_used = build_initial_queries(company.legal_name)
+                return result
+
+    if resolve_concurrency <= 1:
+        results = [await _resolve_one(company) for company in companies]
+    else:
+        Actor.log.info(
+            "Resolving %s companies with resolve_concurrency=%s (after batched Google).",
+            len(companies),
+            resolve_concurrency,
+        )
+        results = list(await asyncio.gather(*[_resolve_one(c) for c in companies]))
     return results

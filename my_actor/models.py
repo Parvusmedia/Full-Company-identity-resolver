@@ -58,6 +58,7 @@ class ActorSettings(BaseModel):
     max_harvest_candidates: int = 2
     harvest_api_key: str | None = None
     harvest_concurrency: int = 3
+    resolve_concurrency: int = 1
     fallback_google_by_website: bool = True
     fallback_confidence_threshold: int = 78
     fallback_harvest_search: bool = True

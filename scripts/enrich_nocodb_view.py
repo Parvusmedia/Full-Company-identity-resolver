@@ -267,6 +267,8 @@ async def main_async(args: argparse.Namespace) -> int:
             "fallback_homepage_linkedin": not args.disable_discovery,
             "use_ai_for_ambiguous": False,
             "batch_size": args.chunk_size,
+            "harvest_concurrency": args.harvest_concurrency,
+            "resolve_concurrency": args.resolve_concurrency,
             "debug": False,
         },
         env_token=os.getenv("APIFY_TOKEN"),
@@ -482,6 +484,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--view", default=DEFAULT_VIEW)
     parser.add_argument("--confidence-lt", type=float, default=50.0)
     parser.add_argument("--chunk-size", type=int, default=int(os.getenv("CHUNK_SIZE", "10")))
+    parser.add_argument(
+        "--harvest-concurrency",
+        type=int,
+        default=int(os.getenv("HARVEST_CONCURRENCY", "3")),
+        help="Max concurrent Harvest API calls (default 3)",
+    )
+    parser.add_argument(
+        "--resolve-concurrency",
+        type=int,
+        default=int(os.getenv("RESOLVE_CONCURRENCY", "1")),
+        help="Resolve companies in parallel after batched Google (default 1 = sequential)",
+    )
     parser.add_argument(
         "--wave-size",
         type=int,
