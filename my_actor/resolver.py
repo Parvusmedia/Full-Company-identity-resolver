@@ -457,7 +457,10 @@ async def resolve_company(
             batch_size=settings.batch_size,
         )
     else:
-        evidences = evidences_for_company(prefetched_evidences, company.legal_name)
+        evidences = [
+            ev.model_copy(deep=True)
+            for ev in evidences_for_company(prefetched_evidences, company.legal_name)
+        ]
 
     linkedin_evidences = filter_linkedin_evidences(evidences)
     website_evidences = filter_website_evidences(
@@ -597,7 +600,7 @@ async def resolve_company(
         domain = None
         if website_candidates:
             domain = website_candidates[0].domain
-        if not domain and selected.harvest:
+        if not domain and selected and selected.harvest:
             domain = extract_registrable_domain(str(selected.harvest.get("website") or ""))
         if not domain:
             domains = extract_domains_from_text(

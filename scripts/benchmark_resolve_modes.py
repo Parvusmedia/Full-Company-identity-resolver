@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from my_actor.models import CompanyInput, ResolutionResult  # noqa: E402
-from my_actor.resolver import resolve_companies_batch, settings_from_input  # noqa: E402
+from my_actor.google_search import build_initial_queries, run_google_searches  # noqa: E402
+from my_actor.resolver import resolve_companies_batch, resolve_company, settings_from_input  # noqa: E402
 from scripts.enrich_nocodb_view import (  # noqa: E402
     DEFAULT_BASE,
     DEFAULT_TABLE,
@@ -125,6 +126,44 @@ def _settings(
     )
 
 
+async def _prefetch_google(companies: list[CompanyInput], settings: Any) -> list[Any]:
+    query_list: list[str] = []
+    for company in companies:
+        query_list.extend(build_initial_queries(company.legal_name))
+    return await run_google_searches(
+        query_list,
+        actor_id=settings.google_actor_id,
+        token=settings.apify_token,
+        country_code=settings.country_code,
+        language_code=settings.language_code,
+        results_per_page=settings.google_results_per_page,
+        batch_size=settings.batch_size,
+    )
+
+
+async def _resolve_prefetched(
+    companies: list[CompanyInput],
+    settings: Any,
+    all_evidences: list[Any],
+) -> list[ResolutionResult]:
+    resolve_concurrency = max(1, settings.resolve_concurrency)
+    if resolve_concurrency <= 1:
+        out: list[ResolutionResult] = []
+        for company in companies:
+            out.append(await resolve_company(company, settings, prefetched_evidences=all_evidences))
+        return out
+
+    import asyncio
+
+    sem = asyncio.Semaphore(resolve_concurrency)
+
+    async def _one(company: CompanyInput) -> ResolutionResult:
+        async with sem:
+            return await resolve_company(company, settings, prefetched_evidences=all_evidences)
+
+    return list(await asyncio.gather(*[_one(c) for c in companies]))
+
+
 async def _run_mode(
     companies: list[CompanyInput],
     *,
@@ -132,6 +171,7 @@ async def _run_mode(
     chunk_size: int,
     harvest_concurrency: int,
     resolve_concurrency: int,
+    prefetched_evidences: list[Any] | None = None,
 ) -> tuple[float, list[ResolutionResult]]:
     settings = _settings(
         chunk_size=chunk_size,
@@ -144,7 +184,10 @@ async def _run_mode(
         flush=True,
     )
     t0 = time.perf_counter()
-    results = await resolve_companies_batch(companies, settings)
+    if prefetched_evidences is not None:
+        results = await _resolve_prefetched(companies, settings, prefetched_evidences)
+    else:
+        results = await resolve_companies_batch(companies, settings)
     elapsed = time.perf_counter() - t0
     print(f"Elapsed: {elapsed:.1f}s ({elapsed / max(1, len(companies)):.1f}s/org)", flush=True)
     return elapsed, results
@@ -171,25 +214,39 @@ async def main_async(args: argparse.Namespace) -> int:
     for c in companies:
         print(f"  - {c.legal_name}", flush=True)
 
+    shared_google: list[Any] | None = None
+    if args.isolate_resolve:
+        base_settings = _settings(chunk_size=args.chunk_size, harvest_concurrency=3, resolve_concurrency=1)
+        print("\nPrefetching Google once for isolate-resolve comparison …", flush=True)
+        tg0 = time.perf_counter()
+        shared_google = await _prefetch_google(companies, base_settings)
+        print(f"Google prefetch: {time.perf_counter() - tg0:.1f}s", flush=True)
+
+    harvest_base = 3 if args.isolate_resolve else 3
+    harvest_fast = 3 if args.isolate_resolve else args.harvest_concurrency
+
     t_base, res_base = await _run_mode(
         companies,
         label="baseline",
         chunk_size=args.chunk_size,
-        harvest_concurrency=3,
+        harvest_concurrency=harvest_base,
         resolve_concurrency=1,
+        prefetched_evidences=shared_google,
     )
     t_fast, res_fast = await _run_mode(
         companies,
         label="candidate",
         chunk_size=args.chunk_size,
-        harvest_concurrency=args.harvest_concurrency,
+        harvest_concurrency=harvest_fast,
         resolve_concurrency=args.resolve_concurrency,
+        prefetched_evidences=shared_google,
     )
 
     diffs = _compare(res_base, res_fast)
     report = {
         "sample_size": len(companies),
         "chunk_size": args.chunk_size,
+        "isolate_resolve": args.isolate_resolve,
         "baseline": {
             "resolve_concurrency": 1,
             "harvest_concurrency": 3,
@@ -230,6 +287,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--resolve-concurrency", type=int, default=4)
     p.add_argument("--harvest-concurrency", type=int, default=5)
     p.add_argument("--output", default="/tmp/benchmark-resolve-modes.json")
+    p.add_argument(
+        "--isolate-resolve",
+        action="store_true",
+        help="One Google prefetch; compare only resolve step (fair efficacy check)",
+    )
     return p
 
 

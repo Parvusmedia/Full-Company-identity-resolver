@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any
 from urllib.parse import urlparse
@@ -22,6 +23,10 @@ LINKEDIN_QUERY = "linkedin"
 WEBSITE_QUERY = "website"
 DOMAIN_FALLBACK_QUERY = "domain_fallback"
 CORE_LINKEDIN_QUERY = "core_linkedin"
+
+# Concurrent Apify actor runs can mix dataset reads; serialize actor calls.
+_APIFY_ACTOR_SEM = asyncio.Semaphore(1)
+
 
 def build_linkedin_query(legal_name: str) -> str:
     return f'"{legal_name}" linkedin'
@@ -215,41 +220,42 @@ async def run_google_searches(
 
     client = ApifyClientAsync(token)
 
-    for batch in chunked(unique_queries, batch_size):
-        run_input = {
-            "queries": "\n".join(batch),
-            "countryCode": country_code,
-            "languageCode": language_code,
-            "maxPagesPerQuery": 1,
-            "resultsPerPage": results_per_page,
-            "saveHtml": False,
-            "saveHtmlToKeyValueStore": False,
-        }
-        Actor.log.info(
-            "Calling Google Search Actor %s with %s queries (batch).",
-            actor_id,
-            len(batch),
-        )
-        try:
-            run = await client.actor(actor_id).call(run_input=run_input)
-        except Exception as exc:  # noqa: BLE001
-            Actor.log.exception("Google Search Actor call failed: %s", type(exc).__name__)
-            continue
+    async with _APIFY_ACTOR_SEM:
+        for batch in chunked(unique_queries, batch_size):
+            run_input = {
+                "queries": "\n".join(batch),
+                "countryCode": country_code,
+                "languageCode": language_code,
+                "maxPagesPerQuery": 1,
+                "resultsPerPage": results_per_page,
+                "saveHtml": False,
+                "saveHtmlToKeyValueStore": False,
+            }
+            Actor.log.info(
+                "Calling Google Search Actor %s with %s queries (batch).",
+                actor_id,
+                len(batch),
+            )
+            try:
+                run = await client.actor(actor_id).call(run_input=run_input)
+            except Exception as exc:  # noqa: BLE001
+                Actor.log.exception("Google Search Actor call failed: %s", type(exc).__name__)
+                continue
 
-        dataset_id = None
-        if run is not None:
-            # apify-client >=3 returns a Pydantic Run model; older code paths may yield a dict.
-            dataset_id = getattr(run, "default_dataset_id", None)
-            if dataset_id is None and isinstance(run, dict):
-                dataset_id = run.get("defaultDatasetId") or run.get("default_dataset_id")
+            dataset_id = None
+            if run is not None:
+                # apify-client >=3 returns a Pydantic Run model; older code paths may yield a dict.
+                dataset_id = getattr(run, "default_dataset_id", None)
+                if dataset_id is None and isinstance(run, dict):
+                    dataset_id = run.get("defaultDatasetId") or run.get("default_dataset_id")
 
-        if not dataset_id:
-            Actor.log.warning("Google Search Actor returned no dataset.")
-            continue
-        dataset = client.dataset(dataset_id)
-        async for item in dataset.iterate_items():
-            if isinstance(item, dict):
-                all_items.append(item)
+            if not dataset_id:
+                Actor.log.warning("Google Search Actor returned no dataset.")
+                continue
+            dataset = client.dataset(dataset_id)
+            async for item in dataset.iterate_items():
+                if isinstance(item, dict):
+                    all_items.append(item)
 
     return parse_google_dataset_items(all_items)
 
