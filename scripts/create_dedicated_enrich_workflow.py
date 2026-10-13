@@ -65,11 +65,20 @@ def load_enrich_config() -> list[dict]:
             {
                 "id": "cfg-enrich-max",
                 "name": "enrich_push_max_rows_per_run",
-                "value": "15",
+                "value": "50",
+                "type": "string",
+            },
+            {
+                "id": "cfg-enrich-settle",
+                "name": "single_flight_settle_ms",
+                "value": "2000",
                 "type": "string",
             },
         ]
     )
+    for item in assignments:
+        if item["name"] == "code_time_budget_ms":
+            item["value"] = "240000"
     return assignments
 
 

@@ -1,0 +1,1738 @@
+[
+  {
+    "name": "Accommodation Services",
+    "root": "Accommodation Services"
+  },
+  {
+    "name": "Food and Beverage Services",
+    "root": "Accommodation Services"
+  },
+  {
+    "name": "Bars, Taverns, and Nightclubs",
+    "root": "Accommodation Services"
+  },
+  {
+    "name": "Caterers",
+    "root": "Accommodation Services"
+  },
+  {
+    "name": "Mobile Food Services",
+    "root": "Accommodation Services"
+  },
+  {
+    "name": "Restaurants",
+    "root": "Accommodation Services"
+  },
+  {
+    "name": "Hospitality",
+    "root": "Accommodation Services"
+  },
+  {
+    "name": "Bed-and-Breakfasts, Hostels, Homestays",
+    "root": "Accommodation Services"
+  },
+  {
+    "name": "Hotels and Motels",
+    "root": "Accommodation Services"
+  },
+  {
+    "name": "Administrative and Support Services",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Collection Agencies",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Events Services",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Facilities Services",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Janitorial Services",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Landscaping Services",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Fundraising",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Office Administration",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Security and Investigations",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Security Guards and Patrol Services",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Security Systems Services",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Staffing and Recruiting",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Executive Search Services",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Temporary Help Services",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Telephone Call Centers",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Translation and Localization",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Travel Arrangements",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Writing and Editing",
+    "root": "Administrative and Support Services"
+  },
+  {
+    "name": "Construction",
+    "root": "Construction"
+  },
+  {
+    "name": "Building Construction",
+    "root": "Construction"
+  },
+  {
+    "name": "Nonresidential Building Construction",
+    "root": "Construction"
+  },
+  {
+    "name": "Residential Building Construction",
+    "root": "Construction"
+  },
+  {
+    "name": "Civil Engineering",
+    "root": "Construction"
+  },
+  {
+    "name": "Highway, Street, and Bridge Construction",
+    "root": "Construction"
+  },
+  {
+    "name": "Subdivision of Land",
+    "root": "Construction"
+  },
+  {
+    "name": "Utility System Construction",
+    "root": "Construction"
+  },
+  {
+    "name": "Specialty Trade Contractors",
+    "root": "Construction"
+  },
+  {
+    "name": "Building Equipment Contractors",
+    "root": "Construction"
+  },
+  {
+    "name": "Building Finishing Contractors",
+    "root": "Construction"
+  },
+  {
+    "name": "Building Structure and Exterior Contractors",
+    "root": "Construction"
+  },
+  {
+    "name": "Consumer Services",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Civic and Social Organizations",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Industry Associations",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Political Organizations",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Professional Organizations",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Household Services",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Non-profit Organizations",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Personal and Laundry Services",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Laundry and Drycleaning Services",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Personal Care Services",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Pet Services",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Philanthropic Fundraising Services",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Religious Institutions",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Repair and Maintenance",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Commercial and Industrial Machinery Maintenance",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Electronic and Precision Equipment Maintenance",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Footwear and Leather Goods Repair",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Reupholstery and Furniture Repair",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Vehicle Repair and Maintenance",
+    "root": "Consumer Services"
+  },
+  {
+    "name": "Education",
+    "root": "Education"
+  },
+  {
+    "name": "E-Learning Providers",
+    "root": "Education"
+  },
+  {
+    "name": "Higher Education",
+    "root": "Education"
+  },
+  {
+    "name": "Primary and Secondary Education",
+    "root": "Education"
+  },
+  {
+    "name": "Professional Training and Coaching",
+    "root": "Education"
+  },
+  {
+    "name": "Technical and Vocational Training",
+    "root": "Education"
+  },
+  {
+    "name": "Cosmetology and Barber Schools",
+    "root": "Education"
+  },
+  {
+    "name": "Fine Arts Schools",
+    "root": "Education"
+  },
+  {
+    "name": "Flight Training",
+    "root": "Education"
+  },
+  {
+    "name": "Language Schools",
+    "root": "Education"
+  },
+  {
+    "name": "Secretarial Schools",
+    "root": "Education"
+  },
+  {
+    "name": "Sports and Recreation Instruction",
+    "root": "Education"
+  },
+  {
+    "name": "Entertainment Providers",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Artists and Writers",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Museums, Historical Sites, and Zoos",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Historical Sites",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Museums",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Zoos and Botanical Gardens",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Musicians",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Performing Arts and Spectator Sports",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Circuses and Magic Shows",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Dance Companies",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Performing Arts",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Spectator Sports",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Racetracks",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Sports Teams and Clubs",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Theater Companies",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Recreational Facilities",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Amusement Parks and Arcades",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Gambling Facilities and Casinos",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Golf Courses and Country Clubs",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Skiing Facilities",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Wellness and Fitness Services",
+    "root": "Entertainment Providers"
+  },
+  {
+    "name": "Farming, Ranching, Forestry",
+    "root": "Farming, Ranching, Forestry"
+  },
+  {
+    "name": "Farming",
+    "root": "Farming, Ranching, Forestry"
+  },
+  {
+    "name": "Horticulture",
+    "root": "Farming, Ranching, Forestry"
+  },
+  {
+    "name": "Forestry and Logging",
+    "root": "Farming, Ranching, Forestry"
+  },
+  {
+    "name": "Ranching and Fisheries",
+    "root": "Farming, Ranching, Forestry"
+  },
+  {
+    "name": "Fisheries",
+    "root": "Farming, Ranching, Forestry"
+  },
+  {
+    "name": "Ranching",
+    "root": "Farming, Ranching, Forestry"
+  },
+  {
+    "name": "Financial Services",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Capital Markets",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Investment Advice",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Investment Banking",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Investment Management",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Securities and Commodity Exchanges",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Venture Capital and Private Equity Principals",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Credit Intermediation",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Banking",
+    "root": "Financial Services"
+  },
+  {
+    "name": "International Trade and Development",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Loan Brokers",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Savings Institutions",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Funds and Trusts",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Insurance and Employee Benefit Funds",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Pension Funds",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Trusts and Estates",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Insurance",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Claims Adjusting, Actuarial Services",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Insurance Agencies and Brokerages",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Insurance Carriers",
+    "root": "Financial Services"
+  },
+  {
+    "name": "Government Administration",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Administration of Justice",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Correctional Institutions",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Courts of Law",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Fire Protection",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Law Enforcement",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Public Safety",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Economic Programs",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Transportation Programs",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Utilities Administration",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Environmental Quality Programs",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Air, Water, and Waste Program Management",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Conservation Programs",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Health and Human Services",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Education Administration Programs",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Public Assistance Programs",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Public Health",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Housing and Community Development",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Community Development and Urban Planning",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Housing Programs",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Military and International Affairs",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Armed Forces",
+    "root": "Government Administration"
+  },
+  {
+    "name": "International Affairs",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Public Policy Offices",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Executive Offices",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Legislative Offices",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Space Research and Technology",
+    "root": "Government Administration"
+  },
+  {
+    "name": "Holding Companies",
+    "root": "Holding Companies"
+  },
+  {
+    "name": "Hospitals and Health Care",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Community Services",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Services for the Elderly and Disabled",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Hospitals",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Individual and Family Services",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Child Day Care Services",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Emergency and Relief Services",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Vocational Rehabilitation Services",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Medical Practices",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Alternative Medicine",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Ambulance Services",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Chiropractors",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Dentists",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Family Planning Centers",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Home Health Care Services",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Medical and Diagnostic Laboratories",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Mental Health Care",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Optometrists",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Outpatient Care Centers",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Physical, Occupational and Speech Therapists",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Physicians",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Nursing Homes and Residential Care Facilities",
+    "root": "Hospitals and Health Care"
+  },
+  {
+    "name": "Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Apparel Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Fashion Accessories Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Appliances, Electrical, and Electronics Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Electric Lighting Equipment Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Electrical Equipment Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Fuel Cell Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Household Appliance Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Chemical Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Agricultural Chemical Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Artificial Rubber and Synthetic Fiber Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Chemical Raw Materials Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Paint, Coating, and Adhesive Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Personal Care Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Pharmaceutical Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Soap and Cleaning Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Climate Technology Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Computers and Electronics Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Audio and Video Equipment Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Communications Equipment Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Computer Hardware Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Accessible Hardware Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Magnetic and Optical Media Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Measuring and Control Instrument Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Smart Meter Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Semiconductor Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Renewable Energy Semiconductor Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Fabricated Metal Products",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Architectural and Structural Metal Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Boilers, Tanks, and Shipping Container Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Construction Hardware Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Cutlery and Handtool Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Metal Treatments",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Metal Valve, Ball, and Roller Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Spring and Wire Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Turned Products and Fastener Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Food and Beverage Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Breweries",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Distilleries",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Wineries",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Animal Feed Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Baked Goods Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Beverage Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Dairy Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Fruit and Vegetable Preserves Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Meat Products Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Seafood Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Sugar and Confectionery Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Furniture and Home Furnishings Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Household and Institutional Furniture Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Mattress and Blinds Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Office Furniture and Fixtures Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Glass, Ceramics and Concrete Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Abrasives and Nonmetallic Minerals Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Clay and Refractory Products Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Glass Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Lime and Gypsum Products Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Leather Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Footwear Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Women's Handbag Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Machinery Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Agriculture, Construction, Mining Machinery Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Automation Machinery Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Robot Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Commercial and Service Industry Machinery Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Engines and Power Transmission Equipment Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Renewable Energy Equipment Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "HVAC and Refrigeration Equipment Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Industrial Machinery Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Metalworking Machinery Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Medical Equipment Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Oil and Coal Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Paper and Forest Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Plastics and Rubber Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Packaging and Containers Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Plastics Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Rubber Products Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Primary Metal Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Printing Services",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Sporting Goods Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Textile Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Tobacco Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Transportation Equipment Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Aviation and Aerospace Component Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Defense and Space Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Motor Vehicle Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Alternative Fuel Vehicle Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Motor Vehicle Parts Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Railroad Equipment Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Shipbuilding",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Wood Product Manufacturing",
+    "root": "Manufacturing"
+  },
+  {
+    "name": "Oil, Gas, and Mining",
+    "root": "Oil, Gas, and Mining"
+  },
+  {
+    "name": "Mining",
+    "root": "Oil, Gas, and Mining"
+  },
+  {
+    "name": "Coal Mining",
+    "root": "Oil, Gas, and Mining"
+  },
+  {
+    "name": "Metal Ore Mining",
+    "root": "Oil, Gas, and Mining"
+  },
+  {
+    "name": "Nonmetallic Mineral Mining",
+    "root": "Oil, Gas, and Mining"
+  },
+  {
+    "name": "Oil and Gas",
+    "root": "Oil, Gas, and Mining"
+  },
+  {
+    "name": "Natural Gas Extraction",
+    "root": "Oil, Gas, and Mining"
+  },
+  {
+    "name": "Oil Extraction",
+    "root": "Oil, Gas, and Mining"
+  },
+  {
+    "name": "Professional Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Accounting",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Advertising Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Government Relations Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Public Relations and Communications Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Market Research",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Architecture and Planning",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Accessible Architecture and Design",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Business Consulting and Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Environmental Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Human Resources Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Marketing Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Operations Consulting",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Outsourcing and Offshoring Consulting",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Strategic Management Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Design Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Graphic Design",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Regenerative Design",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Interior Design",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Engineering Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Robotics Engineering",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Surveying and Mapping Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "IT Services and IT Consulting",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Computer and Network Security",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Digital Accessibility Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "IT System Custom Software Development",
+    "root": "Professional Services"
+  },
+  {
+    "name": "IT System Data Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "IT System Design Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "IT System Installation and Disposal",
+    "root": "Professional Services"
+  },
+  {
+    "name": "IT System Operations and Maintenance",
+    "root": "Professional Services"
+  },
+  {
+    "name": "IT System Testing and Evaluation",
+    "root": "Professional Services"
+  },
+  {
+    "name": "IT System Training and Support",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Legal Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Alternative Dispute Resolution",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Law Practice",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Photography",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Research Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Biotechnology Research",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Nanotechnology Research",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Think Tanks",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Services for Renewable Energy",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Veterinary Services",
+    "root": "Professional Services"
+  },
+  {
+    "name": "Real Estate and Equipment Rental Services",
+    "root": "Real Estate and Equipment Rental Services"
+  },
+  {
+    "name": "Equipment Rental Services",
+    "root": "Real Estate and Equipment Rental Services"
+  },
+  {
+    "name": "Commercial and Industrial Equipment Rental",
+    "root": "Real Estate and Equipment Rental Services"
+  },
+  {
+    "name": "Consumer Goods Rental",
+    "root": "Real Estate and Equipment Rental Services"
+  },
+  {
+    "name": "Real Estate",
+    "root": "Real Estate and Equipment Rental Services"
+  },
+  {
+    "name": "Leasing Non-residential Real Estate",
+    "root": "Real Estate and Equipment Rental Services"
+  },
+  {
+    "name": "Leasing Residential Real Estate",
+    "root": "Real Estate and Equipment Rental Services"
+  },
+  {
+    "name": "Real Estate Agents and Brokers",
+    "root": "Real Estate and Equipment Rental Services"
+  },
+  {
+    "name": "Retail",
+    "root": "Retail"
+  },
+  {
+    "name": "Food and Beverage Retail",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Groceries",
+    "root": "Retail"
+  },
+  {
+    "name": "Online and Mail Order Retail",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Apparel and Fashion",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Appliances, Electrical, and Electronic Equipment",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Art Dealers",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Art Supplies",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Books and Printed News",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Building Materials and Garden Equipment",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Florists",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Furniture and Home Furnishings",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Gasoline",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Health and Personal Care Products",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Pharmacies",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Luxury Goods and Jewelry",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Motor Vehicles",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Musical Instruments",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Office Equipment",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Office Supplies and Gifts",
+    "root": "Retail"
+  },
+  {
+    "name": "Retail Recyclable Materials & Used Merchandise",
+    "root": "Retail"
+  },
+  {
+    "name": "Technology, Information and Media",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Media & Telecommunications",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Book and Periodical Publishing",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Book Publishing",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Newspaper Publishing",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Periodical Publishing",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Broadcast Media Production and Distribution",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Cable and Satellite Programming",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Radio and Television Broadcasting",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Movies, Videos and Sound",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Animation and Post-production",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Media Production",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Movies and Sound Recording",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Sound Recording",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Sheet Music Publishing",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Telecommunications",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Satellite Telecommunications",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Telecommunications Carriers",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Wireless Services",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Technology, Information and Internet",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Data Infrastructure and Analytics",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Blockchain Services",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Business Intelligence Platforms",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Climate Data and Analytics",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Information Services",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Internet Publishing",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Business Content",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Online Audio and Video Media",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Internet News",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Libraries",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Blogs",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Internet Marketplace Platforms",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Social Networking Platforms",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Software Development",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Computer Games",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Mobile Gaming Apps",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Computer Networking Products",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Data Security Software Products",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Desktop Computing Software Products",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Embedded Software Products",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Mobile Computing Software Products",
+    "root": "Technology, Information and Media"
+  },
+  {
+    "name": "Transportation, Logistics, Supply Chain and Storage",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Airlines and Aviation",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Freight and Package Transportation",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Ground Passenger Transportation",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Interurban and Rural Bus Services",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "School and Employee Bus Services",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Shuttles and Special Needs Transportation Services",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Sightseeing Transportation",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Taxi and Limousine Services",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Urban Transit Services",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Maritime Transportation",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Pipeline Transportation",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Postal Services",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Rail Transportation",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Truck Transportation",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Warehousing and Storage",
+    "root": "Transportation, Logistics, Supply Chain and Storage"
+  },
+  {
+    "name": "Utilities",
+    "root": "Utilities"
+  },
+  {
+    "name": "Electric Power Generation",
+    "root": "Utilities"
+  },
+  {
+    "name": "Fossil Fuel Electric Power Generation",
+    "root": "Utilities"
+  },
+  {
+    "name": "Nuclear Electric Power Generation",
+    "root": "Utilities"
+  },
+  {
+    "name": "Renewable Energy Power Generation",
+    "root": "Utilities"
+  },
+  {
+    "name": "Biomass Electric Power Generation",
+    "root": "Utilities"
+  },
+  {
+    "name": "Geothermal Electric Power Generation",
+    "root": "Utilities"
+  },
+  {
+    "name": "Hydroelectric Power Generation",
+    "root": "Utilities"
+  },
+  {
+    "name": "Solar Electric Power Generation",
+    "root": "Utilities"
+  },
+  {
+    "name": "Wind Electric Power Generation",
+    "root": "Utilities"
+  },
+  {
+    "name": "Electric Power Transmission, Control, and Distribution",
+    "root": "Utilities"
+  },
+  {
+    "name": "Natural Gas Distribution",
+    "root": "Utilities"
+  },
+  {
+    "name": "Water, Waste, Steam, and Air Conditioning Services",
+    "root": "Utilities"
+  },
+  {
+    "name": "Steam and Air-Conditioning Supply",
+    "root": "Utilities"
+  },
+  {
+    "name": "Waste Collection",
+    "root": "Utilities"
+  },
+  {
+    "name": "Waste Treatment and Disposal",
+    "root": "Utilities"
+  },
+  {
+    "name": "Water Supply and Irrigation Systems",
+    "root": "Utilities"
+  },
+  {
+    "name": "Wholesale",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Alcoholic Beverages",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Apparel and Sewing Supplies",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Appliances, Electrical, and Electronics",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Building Materials",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Chemical and Allied Products",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Computer Equipment",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Drugs and Sundries",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Food and Beverage",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Footwear",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Furniture and Home Furnishings",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Hardware, Plumbing, Heating Equipment",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Import and Export",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Luxury Goods and Jewelry",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Machinery",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Metals and Minerals",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Motor Vehicles and Parts",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Paper Products",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Petroleum and Petroleum Products",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Photography Equipment and Supplies",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Raw Farm Products",
+    "root": "Wholesale"
+  },
+  {
+    "name": "Wholesale Recyclable Materials",
+    "root": "Wholesale"
+  }
+]

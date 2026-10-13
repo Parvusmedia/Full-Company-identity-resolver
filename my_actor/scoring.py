@@ -12,6 +12,8 @@ from .normalization import (
     contains_branch_terms,
     core_name,
     extract_registrable_domain,
+    is_blocked_directory_linkedin_slug,
+    linkedin_company_slug,
     normalize_text,
     slug_from_linkedin_url,
     token_coverage,
@@ -259,8 +261,13 @@ def compute_final_score(
             if relationship == Relationship.SAME_ENTITY:
                 relationship = Relationship.REQUIRES_REVIEW
     elif harvest_domain and not google_domain:
-        score += 4.0
-        reasons.append("harvest_website_present")
+        if is_non_corporate_website_domain(harvest_domain, company.legal_name):
+            score -= 25.0
+            reasons.append("penalty_harvest_directory_domain")
+            relationship = Relationship.REQUIRES_REVIEW
+        else:
+            score += 4.0
+            reasons.append("harvest_website_present")
     elif google_domain and not harvest_domain:
         score += 2.0
         reasons.append("google_website_present_only")
@@ -368,6 +375,29 @@ def classify_match_status(
     return status
 
 
+def is_directory_false_positive(company: CompanyInput, candidate: LinkedInCandidate | None) -> bool:
+    """True when the candidate is a trade directory, not the company being resolved.
+
+    The Publicaciones Alimarket LinkedIn page is always rejected. Any other
+    candidate whose Harvest website is a known directory is rejected unless the
+    legal name actually matches that publisher.
+    """
+    if candidate is None:
+        return False
+    slug = linkedin_company_slug(candidate.linkedin_url) or candidate.universal_name_guess
+    if is_blocked_directory_linkedin_slug(slug):
+        return True
+    element = candidate.harvest if isinstance(candidate.harvest, dict) else {}
+    website = element.get("website")
+    domain = extract_registrable_domain(str(website) if website else None)
+    if not domain or not is_non_corporate_website_domain(domain, company.legal_name):
+        return False
+    harvest_name = str(element.get("name") or "")
+    if name_similarity(core_name(company.legal_name), harvest_name) >= 80:
+        return False
+    return True
+
+
 def apply_identity_gates(
     company: CompanyInput,
     candidate: LinkedInCandidate | None,
@@ -379,6 +409,10 @@ def apply_identity_gates(
     reasons: list[str] = []
     if candidate is None:
         return score, status, relationship, reasons
+
+    if is_directory_false_positive(company, candidate):
+        reasons.append("directory_publisher_rejected")
+        return 15.0, MatchStatus.NOT_FOUND, Relationship.REQUIRES_REVIEW, reasons
 
     core = core_name(company.legal_name)
     element = candidate.harvest or {}

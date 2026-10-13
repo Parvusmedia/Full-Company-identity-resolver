@@ -16,6 +16,8 @@ from .google_search import (
     extract_domains_from_text,
     filter_linkedin_evidences,
     filter_website_evidences,
+    is_blocked_website,
+    is_non_corporate_website_domain,
     run_google_searches,
 )
 from .harvest import (
@@ -50,6 +52,7 @@ from .scoring import (
     compute_final_score,
     compute_pre_score,
     confidence_from_status,
+    is_directory_false_positive,
 )
 
 
@@ -114,6 +117,20 @@ def settings_from_input(raw_input: dict[str, Any], *, env_token: str | None, env
         batch_size=int(raw_input.get("batch_size") or 20),
         debug=bool(raw_input.get("debug", False)),
     )
+
+
+DIRECTORY_REJECTION_NOTE = (
+    "Directorio excluido: el candidato era un medio o directorio "
+    "(Alimarket u otro), no la empresa."
+)
+DIRECTORY_REJECTION_CONFIDENCE = 15.0
+
+
+def _selectable_candidates(
+    company: CompanyInput,
+    candidates: list[LinkedInCandidate],
+) -> list[LinkedInCandidate]:
+    return [cand for cand in candidates if not is_directory_false_positive(company, cand)]
 
 
 def _dedupe_linkedin_candidates(evidences: list[GoogleEvidence]) -> list[LinkedInCandidate]:
@@ -215,9 +232,15 @@ def _result_from_selection(
     ai_decision: dict[str, Any] | None,
     debug: bool,
     error: str | None = None,
+    rejection_note: str | None = None,
 ) -> ResolutionResult:
     google_website = website_candidates[0].url if website_candidates else None
     google_domain = website_candidates[0].domain if website_candidates else None
+    if is_blocked_website(google_website, company.legal_name) or is_non_corporate_website_domain(
+        google_domain, company.legal_name
+    ):
+        google_website = None
+        google_domain = None
 
     if selected is None:
         result = _empty_result(company, error=error, status=status)
@@ -227,8 +250,14 @@ def _result_from_selection(
         result.domain = google_domain
         result.website = google_website
         result.confidence = confidence
+        result.relationship = relationship.value
+        result.match_status = status.value
         result.enrichment_status = "partial" if google_website else result.enrichment_status
-        if status == MatchStatus.NOT_FOUND and google_website:
+        if rejection_note:
+            result.evidence_summary = rejection_note
+            result.enrichment_status = "rejected_directory"
+            result.confidence = confidence
+        elif status == MatchStatus.NOT_FOUND and google_website:
             result.match_status = MatchStatus.PARTIAL.value
             result.evidence_summary = "Website candidates found but no reliable LinkedIn match."
         if debug:
@@ -241,10 +270,15 @@ def _result_from_selection(
     hq_fields = harvest_headquarters_fields(element if element else None)
     industry, industries = harvest_industry(element if element else None)
     emp_range, emp_start, emp_end = harvest_employee_range(element if element else None)
-    harvest_website = element.get("website") if element else None
-    harvest_domain = extract_registrable_domain(str(harvest_website) if harvest_website else None)
-    website = harvest_website or google_website
-    domain = harvest_domain or google_domain
+    raw_harvest_website = element.get("website") if element else None
+    raw_harvest_domain = extract_registrable_domain(str(raw_harvest_website) if raw_harvest_website else None)
+    harvest_site_blocked = is_blocked_website(str(raw_harvest_website) if raw_harvest_website else None, company.legal_name)
+    if is_directory_false_positive(company, selected) or harvest_site_blocked:
+        website = google_website
+        domain = google_domain
+    else:
+        website = raw_harvest_website or google_website
+        domain = raw_harvest_domain or google_domain
 
     linkedin_id = None
     if element.get("id") is not None:
@@ -278,7 +312,7 @@ def _result_from_selection(
         website=website,
         domain=domain,
         google_website=google_website,
-        harvest_website=harvest_website,
+        harvest_website=raw_harvest_website,
         description=element.get("description") if element else None,
         tagline=element.get("tagline") if element else None,
         industry=industry,
@@ -381,9 +415,15 @@ async def resolve_company(
 
     candidates.sort(key=lambda c: c.final_score, reverse=True)
 
-    selected = candidates[0] if candidates else None
-    second_score = candidates[1].final_score if len(candidates) > 1 else None
+    selectable = _selectable_candidates(company, candidates)
+    selected = selectable[0] if selectable else None
+    second_score = selectable[1].final_score if len(selectable) > 1 else None
+    directory_rejected = bool(candidates) and not selectable
     status, confidence, relationship = _finalize_status_and_confidence(company, selected, second_score)
+    if directory_rejected:
+        status = MatchStatus.NOT_FOUND
+        confidence = DIRECTORY_REJECTION_CONFIDENCE
+        relationship = Relationship.REQUIRES_REVIEW
     commercial_name = (selected.harvest or {}).get("name") if selected and selected.harvest else None
     ai_decision_dict: dict[str, Any] | None = None
 
@@ -398,11 +438,17 @@ async def resolve_company(
             domain = website_candidates[0].domain
         if not domain and selected.harvest:
             domain = extract_registrable_domain(str(selected.harvest.get("website") or ""))
+        if domain and is_non_corporate_website_domain(domain, company.legal_name):
+            domain = None
         if not domain:
-            domains = extract_domains_from_text(
-                *[e.snippet for e in evidences],
-                *[e.title for e in evidences],
-            )
+            domains = [
+                item
+                for item in extract_domains_from_text(
+                    *[e.snippet for e in evidences],
+                    *[e.title for e in evidences],
+                )
+                if not is_non_corporate_website_domain(item, company.legal_name)
+            ]
             domain = domains[0] if domains else None
         if domain:
             fallback_q = build_domain_fallback_query(domain)
@@ -468,24 +514,31 @@ async def resolve_company(
                 cand.score_reasons = reasons
                 cand.relationship = rel
             candidates.sort(key=lambda c: c.final_score, reverse=True)
-            selected = candidates[0] if candidates else None
-            second_score = candidates[1].final_score if len(candidates) > 1 else None
+            selectable = _selectable_candidates(company, candidates)
+            selected = selectable[0] if selectable else None
+            second_score = selectable[1].final_score if len(selectable) > 1 else None
+            directory_rejected = bool(candidates) and not selectable
             status, confidence, relationship = _finalize_status_and_confidence(
                 company, selected, second_score
             )
+            if directory_rejected:
+                status = MatchStatus.NOT_FOUND
+                confidence = DIRECTORY_REJECTION_CONFIDENCE
+                relationship = Relationship.REQUIRES_REVIEW
             commercial_name = (selected.harvest or {}).get("name") if selected and selected.harvest else None
 
     # Optional AI for ambiguous cases — never replaces deterministic pipeline wholesale
     if (
         settings.use_ai_for_ambiguous
         and settings.openai_api_key
-        and candidates
+        and selectable
         and confidence < settings.ai_confidence_threshold
     ):
         Actor.log.info("Invoking optional AI disambiguation for %s", company.legal_name)
+        ai_pool = selectable[: max(top_n, 3)]
         ai_decision = await resolve_with_ai(
             company,
-            candidates[: max(top_n, 3)],
+            ai_pool,
             website_candidates,
             api_key=settings.openai_api_key,
             model=settings.openai_model,
@@ -493,21 +546,30 @@ async def resolve_company(
         ai_decision_dict = ai_decision.model_dump(mode="json")
         if (
             ai_decision.selected_candidate_index is not None
-            and 0 <= ai_decision.selected_candidate_index < len(candidates[: max(top_n, 3)])
+            and 0 <= ai_decision.selected_candidate_index < len(ai_pool)
         ):
-            selected = candidates[: max(top_n, 3)][ai_decision.selected_candidate_index]
-            if ai_decision.relationship:
+            selected = ai_pool[ai_decision.selected_candidate_index]
+            if is_directory_false_positive(company, selected):
+                selected = None
+                directory_rejected = True
+            if ai_decision.relationship and selected is not None:
                 relationship = ai_decision.relationship
                 selected.relationship = relationship
-            if ai_decision.commercial_name:
+            if ai_decision.commercial_name and selected is not None:
                 commercial_name = ai_decision.commercial_name
-            if ai_decision.confidence is not None:
+            if ai_decision.confidence is not None and selected is not None:
                 # Blend AI confidence lightly with deterministic score
                 selected.final_score = round(
                     (selected.final_score * 0.6) + (ai_decision.confidence * 0.4),
                     2,
                 )
             status, confidence, relationship = _finalize_status_and_confidence(company, selected, None)
+            if directory_rejected or is_directory_false_positive(company, selected):
+                selected = None
+                commercial_name = None
+                status = MatchStatus.NOT_FOUND
+                confidence = DIRECTORY_REJECTION_CONFIDENCE
+                relationship = Relationship.REQUIRES_REVIEW
 
     return _result_from_selection(
         company,
@@ -522,6 +584,7 @@ async def resolve_company(
         commercial_name=commercial_name,
         ai_decision=ai_decision_dict,
         debug=settings.debug,
+        rejection_note=DIRECTORY_REJECTION_NOTE if directory_rejected and selected is None else None,
     )
 
 

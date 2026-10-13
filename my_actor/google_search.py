@@ -56,7 +56,31 @@ _WEBSITE_DIRECTORY_DOMAINS = {
     "empresite.eleconomista.es",
     "expansion.com",
     "cincodias.elpais.com",
+    "iberinform.es",
+    "informa.es",
+    "economia3.com",
+    "cadenadesuministro.es",
+    "canarias7.es",
+    "doctoralia.es",
+    "eventplannerspain.com",
+    "gastroteca.cat",
+    "infobae.com",
+    "lavozdegalicia.es",
+    "nobroker.in",
+    "tendata.com",
+    "vlex.es",
+    "cursodeinstalador.com",
+    "oleoteca.info",
+    "covermanager.com",
 }
+
+# Profile pages on business directories, even when the host is not listed above.
+_DIRECTORY_PROFILE_MARKERS = (
+    "/empresa/",
+    "/ficha-empresa",
+    "/directorio-empresas",
+    "/directorio/",
+)
 
 # Public-sector / institutional sites (wrong unless legal name aligns).
 _WEBSITE_INSTITUTIONAL_DOMAINS = {
@@ -65,7 +89,17 @@ _WEBSITE_INSTITUTIONAL_DOMAINS = {
     "gencat.cat",
     "xunta.gal",
     "juntadeandalucia.es",
+    "idae.es",
+    "congreso.es",
+    "facua.org",
+    "moma.org",
 }
+
+
+def _host_in_domain_set(domain: str, domains: set[str]) -> bool:
+    if domain in domains:
+        return True
+    return any(domain.endswith(f".{item}") for item in domains)
 
 
 def is_non_corporate_website_domain(domain: str | None, legal_name: str) -> bool:
@@ -73,9 +107,11 @@ def is_non_corporate_website_domain(domain: str | None, legal_name: str) -> bool
     if not domain:
         return False
     dom = domain.lower().strip().removeprefix("www.")
-    if dom in _WEBSITE_NOISE_DOMAINS or dom in _WEBSITE_DIRECTORY_DOMAINS:
+    if _host_in_domain_set(dom, _WEBSITE_NOISE_DOMAINS):
         return True
-    if dom in _WEBSITE_INSTITUTIONAL_DOMAINS:
+    if _host_in_domain_set(dom, _WEBSITE_DIRECTORY_DOMAINS):
+        return True
+    if _host_in_domain_set(dom, _WEBSITE_INSTITUTIONAL_DOMAINS):
         return True
     if any(dom.endswith(f".{d}") for d in _WEBSITE_NOISE_DOMAINS):
         return True
@@ -86,7 +122,33 @@ def is_non_corporate_website_domain(domain: str | None, legal_name: str) -> bool
     listing_hosts = ("blogspot.com", "wordpress.com", "wixsite.com", "squarespace.com")
     if any(dom == h or dom.endswith("." + h) for h in listing_hosts):
         return True
-    return dom in _WEBSITE_DIRECTORY_DOMAINS
+    return _host_in_domain_set(dom, _WEBSITE_DIRECTORY_DOMAINS)
+
+
+def is_blocked_website(url: str | None, legal_name: str = "") -> bool:
+    """True for directory, press, and institutional URLs that are not the company site."""
+    if not url:
+        return False
+    raw = str(url).strip()
+    if "://" not in raw and "/" not in raw:
+        return is_non_corporate_website_domain(raw, legal_name)
+    if "://" not in raw:
+        raw = f"https://{raw}"
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return False
+    host = (parsed.netloc or "").lower().removeprefix("www.")
+    domain = extract_registrable_domain(raw) or host
+    if is_non_corporate_website_domain(domain, legal_name) or is_non_corporate_website_domain(host, legal_name):
+        return True
+    path = parsed.path.lower()
+    if any(marker in path for marker in _DIRECTORY_PROFILE_MARKERS):
+        label = (domain or host).split(".")[0].replace("-", " ")
+        if token_coverage(legal_name, label) >= 0.34:
+            return False
+        return True
+    return False
 
 
 def build_linkedin_query(legal_name: str) -> str:
@@ -212,10 +274,7 @@ def filter_website_evidences(evidences: list[GoogleEvidence]) -> list[GoogleEvid
         host = (urlparse(ev.url).netloc or "").lower().removeprefix("www.")
         if "linkedin.com" in host:
             continue
-        domain = extract_registrable_domain(ev.url) or host
-        if domain in _WEBSITE_NOISE_DOMAINS or any(domain.endswith(f".{d}") for d in _WEBSITE_NOISE_DOMAINS):
-            continue
-        if domain in _WEBSITE_DIRECTORY_DOMAINS or domain in _WEBSITE_INSTITUTIONAL_DOMAINS:
+        if is_blocked_website(ev.url):
             continue
         # Government gazettes / random PDFs are weak website signals
         path = urlparse(ev.url).path.lower()

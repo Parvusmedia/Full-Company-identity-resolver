@@ -1,0 +1,178 @@
+{
+  "food and beverages": {
+    "id": 12,
+    "reason": "LinkedIn v1 de productores. Restaurantes y Food and Beverage Services ya tienen etiqueta propia."
+  },
+  "mechanical or industrial engineering": {
+    "id": 14,
+    "reason": "Firmas de ingeniería, no planta de manufactura."
+  },
+  "information technology and services": {
+    "id": 17,
+    "reason": "Etiqueta v1 absorbida por Technology, Information and Media."
+  },
+  "food production": {
+    "id": 7,
+    "reason": "LinkedIn v1 agrupa granjas y producción primaria."
+  },
+  "automotive": {
+    "id": 12,
+    "reason": "Genérico v1 de fabricación de vehículos. Retail Motor Vehicles ya mapea a venta minorista."
+  },
+  "transportation trucking railroad": {
+    "id": 18,
+    "reason": "Transporte terrestre v1."
+  },
+  "consumer goods": {
+    "id": 12,
+    "reason": "Bienes de consumo v1, lado fabricación."
+  },
+  "building materials": {
+    "id": 12,
+    "reason": "Materiales de construcción v1, lado fabricación. Wholesale Building Materials ya mapea a mayorista."
+  },
+  "public policy": {
+    "id": 9,
+    "reason": "Equivalente a Public Policy Offices."
+  },
+  "wine and spirits": {
+    "id": 12,
+    "reason": "Bodegas y bebidas: Food and Beverage Manufacturing."
+  },
+  "medical device": {
+    "id": 12,
+    "reason": "Equivalente a Medical Equipment Manufacturing."
+  },
+  "leisure travel and tourism": {
+    "id": 1,
+    "reason": "Ocio y turismo v1, lado hospitalidad. Travel Arrangements v2 ya mapea a administración y soporte."
+  },
+  "cosmetics": {
+    "id": 12,
+    "reason": "Equivalente a Personal Care Product Manufacturing."
+  },
+  "renewables and environment": {
+    "id": 19,
+    "reason": "Renovables v1. Environmental Services exacto sigue yendo a servicios profesionales."
+  },
+  "paper and forest products": {
+    "id": 12,
+    "reason": "Equivalente a Paper and Forest Product Manufacturing."
+  },
+  "packaging and containers": {
+    "id": 12,
+    "reason": "Equivalente a Packaging and Containers Manufacturing."
+  },
+  "maritime": {
+    "id": 18,
+    "reason": "Equivalente a Maritime Transportation."
+  },
+  "import and export": {
+    "id": 20,
+    "reason": "Equivalente a Wholesale Import and Export."
+  },
+  "human resources": {
+    "id": 14,
+    "reason": "Equivalente a Human Resources Services."
+  },
+  "health wellness and fitness": {
+    "id": 6,
+    "reason": "Equivalente a Wellness and Fitness Services, bajo ocio."
+  },
+  "furniture": {
+    "id": 12,
+    "reason": "Equivalente a Furniture and Home Furnishings Manufacturing. Retail Furniture ya mapea a minorista."
+  },
+  "apparel and fashion": {
+    "id": 12,
+    "reason": "Equivalente a Apparel Manufacturing. Retail Apparel and Fashion ya mapea a minorista."
+  },
+  "education management": {
+    "id": 5,
+    "reason": "Gestión educativa v1."
+  },
+  "warehousing": {
+    "id": 18,
+    "reason": "Equivalente a Warehousing and Storage."
+  },
+  "veterinary": {
+    "id": 14,
+    "reason": "Veterinary Services cuelga de servicios profesionales en la taxonomía v2."
+  },
+  "program development": {
+    "id": 4,
+    "reason": "Programas sociales v1, mismo grupo que organizaciones sin ánimo de lucro."
+  },
+  "non profit organization management": {
+    "id": 4,
+    "reason": "Equivalente a Non-profit Organizations."
+  },
+  "e learning": {
+    "id": 5,
+    "reason": "Equivalente a E-Learning Providers."
+  },
+  "design": {
+    "id": 14,
+    "reason": "Equivalente a Design Services."
+  },
+  "consumer electronics": {
+    "id": 12,
+    "reason": "Electrónica de consumo v1, lado fabricación."
+  },
+  "computer hardware": {
+    "id": 12,
+    "reason": "Equivalente a Computer Hardware Manufacturing."
+  },
+  "commercial real estate": {
+    "id": 15,
+    "reason": "Inmobiliario comercial."
+  },
+  "business supplies and equipment": {
+    "id": 20,
+    "reason": "Suministros de empresa v1, canal mayorista."
+  },
+  "tobacco": {
+    "id": 12,
+    "reason": "Equivalente a Tobacco Manufacturing."
+  },
+  "sporting goods": {
+    "id": 12,
+    "reason": "Equivalente a Sporting Goods Manufacturing."
+  },
+  "research": {
+    "id": 14,
+    "reason": "Equivalente a Research Services."
+  },
+  "philanthropy": {
+    "id": 4,
+    "reason": "Equivalente a Philanthropic Fundraising Services."
+  },
+  "outsourcing offshoring": {
+    "id": 14,
+    "reason": "Equivalente a Outsourcing and Offshoring Consulting."
+  },
+  "luxury goods and jewelry": {
+    "id": 16,
+    "reason": "Equivalente a Retail Luxury Goods and Jewelry."
+  },
+  "industrial automation": {
+    "id": 12,
+    "reason": "Equivalente a Automation Machinery Manufacturing."
+  },
+  "entertainment": {
+    "id": 6,
+    "reason": "Raíz v1 de Entertainment Providers."
+  },
+  "dairy": {
+    "id": 7,
+    "reason": "Producción primaria v1. Dairy Product Manufacturing ya mapea a manufactura."
+  },
+  "biotechnology": {
+    "id": 14,
+    "reason": "Equivalente a Biotechnology Research."
+  },
+  "animation": {
+    "id": 17,
+    "reason": "Equivalente a Animation and Post-production."
+  }
+}

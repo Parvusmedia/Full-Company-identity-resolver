@@ -142,6 +142,81 @@ def token_coverage(reference: str | None, candidate: str | None) -> float:
     return hits / len(ref)
 
 
+def linkedin_company_slug(url: str) -> str | None:
+    """Company slug from a LinkedIn URL, including directory pages we later reject."""
+    if not url:
+        return None
+    try:
+        raw = unquote(url.strip())
+        parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+    except Exception:
+        return None
+    parts = [p for p in parsed.path.split("/") if p]
+    if parts and parts[0].lower() == "posts" and len(parts) > 1:
+        slug = parts[1].split("_", 1)[0].strip()
+        return slug or None
+    try:
+        idx = next(i for i, part in enumerate(parts) if part.lower() == "company")
+    except StopIteration:
+        return None
+    if idx + 1 >= len(parts):
+        return None
+    slug = unquote(parts[idx + 1]).strip()
+    if not slug or slug.lower() in {"jobs", "posts", "life", "people", "about"}:
+        return None
+    return slug
+
+
+def _directory_slug_key(slug: str) -> str:
+    key = unquote(slug).lower().strip().strip(".")
+    key = key.replace(".", "").replace("_", "-")
+    while "--" in key:
+        key = key.replace("--", "-")
+    return key.strip("-")
+
+
+# Publisher pages that Google ranks for unrelated companies. Keys are
+# `_directory_slug_key` forms (dots removed, underscores turned into hyphens).
+_BLOCKED_DIRECTORY_LINKEDIN_SLUGS = {
+    "publicaciones-alimarket",
+    "construnews-com",
+    "leadingcourses",
+    "farmaciascom",
+    "radio-de-gmbh",
+    "smartgridsinfo",
+    "idaeenergia",
+    "cadenadesuministro",
+    "canarias7",
+    "congreso-de-los-diputados",
+    "doctoralia-espana",
+    "event-planner-spain-2",
+    "facua",
+    "gastroteca",
+    "infobae",
+    "la-voz-de-galicia",
+    "the-museum-of-modern-art",
+    "nobroker-in",
+    "tendata",
+    "vlex-es",
+    "curso-de-instalador",
+    "covermanager",
+}
+
+
+def is_blocked_directory_linkedin_slug(slug: str | None) -> bool:
+    """True for LinkedIn pages of directories, trade press, or institutions.
+
+    These pages get ranked for unrelated razones sociales. The slug is the
+    publisher, not the company being resolved.
+    """
+    if not slug:
+        return False
+    key = _directory_slug_key(slug)
+    if key in _BLOCKED_DIRECTORY_LINKEDIN_SLUGS:
+        return True
+    return key == "publicaciones-alimarket" or key.startswith("publicaciones-alimarket-")
+
+
 def slug_from_linkedin_url(url: str) -> str | None:
     normalized = normalize_linkedin_company_url(url)
     if not normalized:
@@ -174,7 +249,7 @@ def is_linkedin_company_url(url: str) -> bool:
 
 
 def should_reject_linkedin_url(url: str) -> bool:
-    """Reject personal profiles, jobs, school, pulse, posts, and non-company URLs."""
+    """Reject personal profiles, jobs, school, pulse, posts, directories, and non-company URLs."""
     try:
         parsed = urlparse(url if "://" in url else f"https://{url}")
     except Exception:
@@ -197,6 +272,8 @@ def should_reject_linkedin_url(url: str) -> bool:
         "/feed/",
     )
     if any(path.startswith(prefix) for prefix in rejected_prefixes):
+        return True
+    if is_blocked_directory_linkedin_slug(linkedin_company_slug(url)):
         return True
     if "/company/" not in path:
         return True

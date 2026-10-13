@@ -14,11 +14,15 @@ relationship and confidence with explainable evidence.
    - `"RAZÓN SOCIAL" website`
 4. Keep query, type, position, title, snippet and URL for every result
 5. Keep only `linkedin.com/company/*`, normalize and deduplicate
-6. Reject personal profiles, jobs, school, showcase, posts, pulse
+6. Reject personal profiles, jobs, school, showcase, posts, pulse, and directory
+   or press publisher pages (Alimarket, Construnews, Iberinform, IDAE, and the
+   same class of listing sites)
 7. Cheap pre-score → enrich top 1–3 candidates with HarvestAPI
-8. Final score combining Google + Harvest
-9. **Identity gates** — cap score/status when legal name, slug tokens, and Harvest
-   name do not align (blocks directory/medio false positives such as Alimarket)
+8. Final score combining Google + Harvest. A Harvest website on a known
+   directory domain is not stored as the company website.
+9. **Identity gates** — drop a directory publisher match (`not_found`, confidence
+   15, under the Pipedrive sync threshold of 60). Other weak name matches are
+   capped so they cannot stay confirmed.
 10. Optional third Google query by domain when confidence is low
 11. Optional OpenAI only for ambiguous cases
 12. Push **one** dataset item per input company
