@@ -78,24 +78,6 @@ def main() -> None:
     if not upd.get("success"):
         raise SystemExit(f"pipedrive update failed: {upd}")
 
-    note = "\n".join(
-        [
-            "[Enriquecimiento identity resolver]",
-            f"match_status: {row.get('match_status', '')}",
-            f"relationship: {row.get('relationship', '')}",
-            f"evidence_summary: {row.get('evidence_summary', '')}",
-        ]
-    )
-    note_url = f"{pd_base}/notes?" + urllib.parse.urlencode({"api_token": pd_token})
-    http_json(
-        urllib.request.Request(
-            note_url,
-            data=json.dumps({"content": note, "org_id": org_id}).encode(),
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-    )
-
     synced_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
     patch_req = urllib.request.Request(
         f"{nc_base}/api/v2/tables/{TABLE_ID}/records",
