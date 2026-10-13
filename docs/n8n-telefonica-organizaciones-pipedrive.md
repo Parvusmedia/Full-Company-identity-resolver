@@ -9,8 +9,10 @@
 - Creado/actualizado con `scripts/create_dedicated_enrich_workflow.py`
 - **Cada 5 minutos** busca filas con `pipedrive_status = ok` y las procesa
 - Webhook POST (mismo flujo): `{N8N_URL}/webhook/telefonica-org-pipedrive-push` (requiere workflow **activo**)
+- Una ejecución procesa hasta **50** filas, una detrás de otra, con un presupuesto de 4 minutos
+- Si llegan varios webhooks a la vez, solo sigue la ejecución más antigua. Las demás salen al momento, sin leer Noco ni escribir en Pipedrive
 
-**Importante:** marcar `ok` en NocoDB **no** ejecuta n8n por sí solo. Hace falta este workflow activo (poll) o un webhook NocoDB → URL anterior.
+Marcar 50 filas en `ok` puede disparar 50 webhooks. No hace falta espaciarlos: el resto de ejecuciones no llama a Pipedrive. Las que no quepan en esa pasada siguen en `ok` y las recoge la siguiente.
 
 ### Legacy (inactivo)
 

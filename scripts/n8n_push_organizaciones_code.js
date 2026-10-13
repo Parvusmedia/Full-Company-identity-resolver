@@ -79,6 +79,24 @@ function enrichmentWriteDate(now = new Date()) {
   }).format(now);
 }
 
+function shouldYieldToOlderRun(selfId, running, nowMs = Date.now(), staleMs = 8 * 60 * 1000) {
+  const self = Number(selfId);
+  if (!self) return false;
+  const cutoff = nowMs - staleMs;
+  for (const ex of running || []) {
+    const id = Number(ex && ex.id);
+    if (!id || id === self) continue;
+    const started = Date.parse((ex && ex.startedAt) || '') || 0;
+    if (started && started < cutoff) continue;
+    if (id < self) return true;
+  }
+  return false;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function orgIdFromRow(row) {
   const a = String(row.pipedrive_org_id || '').trim();
   const b = String(row.source_id || '').trim();
@@ -182,8 +200,9 @@ const pdBase = String(cfg.pipedrive_api_base || 'https://api.pipedrive.com/v1').
 const ncBase = String(cfg.nocodb_base_url || '').replace(/\/$/, '');
 const ncToken = cfg.nocodb_api_token;
 const tableId = cfg.nocodb_organizaciones_table_id || 'mewh1ynmcokfsfi';
-const maxRows = toPositiveInt(cfg.enrich_push_max_rows_per_run, 15);
-const timeBudgetMs = toPositiveInt(cfg.code_time_budget_ms, 45000);
+const maxRows = toPositiveInt(cfg.enrich_push_max_rows_per_run, 50);
+const timeBudgetMs = toPositiveInt(cfg.code_time_budget_ms, 240000);
+const settleMs = toPositiveInt(cfg.single_flight_settle_ms, 2000);
 
 if (!pdToken || !ncToken || !tableId) {
   throw new Error('Missing pipedrive_api_token, nocodb_api_token, or nocodb_organizaciones_table_id in config_enrich_push');
@@ -192,6 +211,47 @@ if (!pdToken || !ncToken || !tableId) {
 const startedAt = Date.now();
 const where = '(confidence,gt,60)~and(pipedrive_status,eq,ok)';
 const ncHeaders = { 'xc-token': ncToken, 'Content-Type': 'application/json' };
+const selfId = (typeof $execution !== 'undefined' && $execution) ? $execution.id : null;
+
+let singleFlight = 'unchecked';
+if (cfg.n8n_api_key && cfg.n8n_api_base && cfg.n8n_workflow_id && selfId) {
+  await sleep(settleMs);
+  try {
+    const running = [];
+    let cursor;
+    for (let page = 0; page < 5; page++) {
+      const qs = { workflowId: cfg.n8n_workflow_id, status: 'running', limit: 100 };
+      if (cursor) qs.cursor = cursor;
+      const listed = await this.helpers.httpRequest({
+        method: 'GET',
+        url: `${String(cfg.n8n_api_base).replace(/\/$/, '')}/api/v1/executions`,
+        qs,
+        headers: { 'X-N8N-API-KEY': cfg.n8n_api_key },
+        json: true,
+      });
+      const batch = Array.isArray(listed.data) ? listed.data : [];
+      running.push(...batch);
+      cursor = listed.nextCursor;
+      if (!cursor || !batch.length) break;
+    }
+    singleFlight = 'leader';
+    if (shouldYieldToOlderRun(selfId, running)) {
+      return [{
+        json: {
+          status: 'skipped',
+          reason: 'another_run_in_progress',
+          execution_id: selfId,
+          single_flight: 'yielded',
+          candidates_fetched: 0,
+          processed_ok: 0,
+          results: [],
+        },
+      }];
+    }
+  } catch (error) {
+    singleFlight = 'unchecked';
+  }
+}
 
 const listResp = await this.helpers.httpRequest({
   method: 'GET',
@@ -288,6 +348,8 @@ return [{
   json: {
     candidates_fetched: rows.length,
     processed_ok: processed,
+    single_flight: singleFlight,
+    execution_id: selfId,
     results,
     industry_unmapped: industryUnmapped,
     filter_where: where,

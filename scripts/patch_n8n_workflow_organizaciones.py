@@ -51,7 +51,7 @@ def patch_workflow(workflow: dict) -> dict:
             {
                 "id": "cfg-enrich-max",
                 "name": "enrich_push_max_rows_per_run",
-                "value": "15",
+                "value": "50",
                 "type": "string",
             },
         ]
