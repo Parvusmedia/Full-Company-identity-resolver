@@ -62,7 +62,7 @@ Si no hay correspondencia, **no se envía** `industry` (un texto libre haría fa
 
 ## Directorios
 
-`alimarket.es` y `https://www.linkedin.com/company/publicaciones-alimarket-s.a./` no son la empresa. Si una fila `ok` trae esa web, ese dominio o ese LinkedIn, el sync no escribe en Pipedrive: borra el enrich en NocoDB, deja `confidence` en 15 y `enrichment_status = rejected_directory`.
+`alimarket.es` y `https://www.linkedin.com/company/publicaciones-alimarket-s.a./` no son la empresa. Tampoco lo son otros directorios o medios que se cuelan igual (Construnews, Iberinform, IDAE, Doctoralia, prensa). Si una fila `ok` trae esa web, ese dominio, una ficha `/empresa/` o ese LinkedIn, el sync no escribe en Pipedrive: borra el enrich en NocoDB, deja `confidence` en 15 y `enrichment_status = rejected_directory`.
 
 Para cubrir una etiqueta nueva: añadir el alias normalizado en `industry_legacy_aliases.json` y ejecutar `python3 scripts/build_industry_map.py`.
 

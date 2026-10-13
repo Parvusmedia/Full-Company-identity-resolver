@@ -23,8 +23,21 @@ assert.equal(shouldYieldToOlderRun(5, [], now), false);
 assert.match(code, /reason: 'another_run_in_progress'/);
 assert.match(code, /enrich_push_max_rows_per_run, 50/);
 assert.match(code, /function isDirectoryIdentityRow/);
+const start = code.indexOf("function isDirectoryIdentityRow");
+let depth = 0;
+let end = start;
+for (let i = code.indexOf("{", start); i < code.length; i += 1) {
+  if (code[i] === "{") depth += 1;
+  else if (code[i] === "}") {
+    depth -= 1;
+    if (depth === 0) {
+      end = i + 1;
+      break;
+    }
+  }
+}
 const isDirectoryIdentityRow = new Function(
-  `${code.match(/function isDirectoryIdentityRow\(row\) \{[\s\S]*?\n\}/)[0]}\nreturn isDirectoryIdentityRow;`,
+  `${code.slice(start, end)}\nreturn isDirectoryIdentityRow;`,
 )();
 assert.equal(isDirectoryIdentityRow({ website: "https://www.alimarket.es/", linkedin_url: "", domain: "" }), true);
 assert.equal(isDirectoryIdentityRow({ domain: "alimarket.es" }), true);
@@ -32,6 +45,9 @@ assert.equal(
   isDirectoryIdentityRow({ linkedin_url: "https://www.linkedin.com/company/publicaciones-alimarket-s.a./" }),
   true,
 );
+assert.equal(isDirectoryIdentityRow({ website: "https://www.construnews.com/", domain: "construnews.com" }), true);
+assert.equal(isDirectoryIdentityRow({ website: "https://www.iberinform.es/empresa/208128/eco-mora" }), true);
+assert.equal(isDirectoryIdentityRow({ linkedin_url: "https://www.linkedin.com/company/idaeenergia/" }), true);
 assert.equal(isDirectoryIdentityRow({ website: "https://example.com", linkedin_url: "https://www.linkedin.com/company/acme/" }), false);
 
 console.log("OK single flight");

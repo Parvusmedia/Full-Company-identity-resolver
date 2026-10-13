@@ -94,12 +94,39 @@ function shouldYieldToOlderRun(selfId, running, nowMs = Date.now(), staleMs = 8 
 }
 
 function isDirectoryIdentityRow(row) {
-  const blob = [row && row.website, row && row.domain, row && row.linkedin_url]
-    .map((value) => String(value || '').trim().toLowerCase())
-    .join(' ');
-  if (!blob) return false;
-  if (blob.includes('publicaciones-alimarket')) return true;
-  return blob.includes('alimarket.es');
+  const DIRECTORY_HOSTS = [
+    'alimarket.es', 'farmacias.es', 'smartgridsinfo.es', 'construnews.com', 'paginasgalegas.com',
+    'leadingcourses.com', 'radio.es', 'infocif.es', 'einforma.com', 'axesor.es',
+    'empresite.eleconomista.es', 'expansion.com', 'cincodias.elpais.com', 'iberinform.es',
+    'informa.es', 'economia3.com', 'cadenadesuministro.es', 'canarias7.es', 'doctoralia.es',
+    'eventplannerspain.com', 'gastroteca.cat', 'infobae.com', 'lavozdegalicia.es', 'nobroker.in',
+    'tendata.com', 'vlex.es', 'cursodeinstalador.com', 'oleoteca.info', 'covermanager.com',
+    'idae.es', 'congreso.es', 'facua.org', 'moma.org',
+  ];
+  const DIRECTORY_PROFILE_MARKERS = ['/empresa/', '/ficha-empresa', '/directorio-empresas', '/directorio/'];
+  const DIRECTORY_LINKEDIN_SLUGS = [
+    'publicaciones-alimarket', 'construnews-com', 'leadingcourses', 'farmacias.com',
+    'radio-de-gmbh', 'smartgridsinfo', 'idaeenergia', 'cadenadesuministro', 'canarias7',
+    'congreso-de-los-diputados', 'doctoralia-espana', 'event-planner-spain_2', 'facua',
+    'gastroteca', 'infobae', 'la-voz-de-galicia', 'the-museum-of-modern-art', 'nobroker-in',
+    'tendata', 'vlex-es', 'curso-de-instalador', 'covermanager',
+  ];
+  const website = String((row && row.website) || '').trim().toLowerCase();
+  const domain = String((row && row.domain) || '').trim().toLowerCase().replace(/^www\./, '');
+  const linkedin = String((row && row.linkedin_url) || '').trim().toLowerCase();
+  const hosts = [domain];
+  const site = website.includes('://') ? website : (website ? `https://${website}` : '');
+  if (site) {
+    try {
+      hosts.push(new URL(site).hostname.replace(/^www\./, ''));
+    } catch (error) {
+      hosts.push(website.split('/')[0].replace(/^www\./, ''));
+    }
+  }
+  const hostBlocked = hosts.some((host) => DIRECTORY_HOSTS.some((item) => host === item || host.endsWith(`.${item}`)));
+  if (hostBlocked) return true;
+  if (DIRECTORY_PROFILE_MARKERS.some((marker) => website.includes(marker))) return true;
+  return DIRECTORY_LINKEDIN_SLUGS.some((slug) => linkedin.includes(`/company/${slug}`));
 }
 
 function sleep(ms) {
