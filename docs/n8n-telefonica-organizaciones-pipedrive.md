@@ -20,7 +20,7 @@
 - Tabla: `telefonica-seguros_organizaciones` (`mewh1ynmcokfsfi`)
 - Filtro: `confidence > 60` y `pipedrive_status = ok`
 - Tras éxito: `update_pipedrive` (ISO) y `pipedrive_status = synced`
-- **Solo rellena campos vacíos en Pipedrive** (si el campo ya tiene valor, no se sobrescribe). La nota de enriquecimiento solo se crea si hubo al menos un campo escrito.
+- **Solo rellena campos vacíos en Pipedrive** (si el campo ya tiene valor, no se sobrescribe). **No** se crean notas en la organización.
 
 ## ID organización
 
@@ -37,8 +37,8 @@
 | `employee_count` | Empleados |
 | `followers` | Linkedin_followers |
 | `enriched_at` | Fecha_enriquecimiento |
-| `headquarters_text` | Localidad / Provincia (parse simple) o nota |
-| `match_status`, `relationship`, `evidence_summary` | Nota de organización |
+| `headquarters_text` | Localidad / Provincia (parse simple) |
+| `match_status`, `relationship`, `evidence_summary` | Solo en NocoDB (no se envían a Pipedrive) |
 
 `industry` no se envía: Pipedrive solo acepta valores de su lista de opciones.
 

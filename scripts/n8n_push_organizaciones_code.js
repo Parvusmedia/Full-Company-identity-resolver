@@ -59,18 +59,6 @@ function orgIdFromRow(row) {
   return Number.isFinite(num) && num > 0 ? Math.floor(num) : null;
 }
 
-function buildNoteContent(row, hqExtra) {
-  const lines = [
-    '[Enriquecimiento identity resolver]',
-    `match_status: ${row.match_status || ''}`,
-    `relationship: ${row.relationship || ''}`,
-    `evidence_summary: ${row.evidence_summary || ''}`,
-  ];
-  if (hqExtra) lines.push(`headquarters_text: ${hqExtra}`);
-  lines.push(`synced_at: ${new Date().toISOString()}`);
-  return lines.join('\n');
-}
-
 function isPdValueEmpty(value) {
   if (value === null || value === undefined) return true;
   if (typeof value === 'string') return value.trim() === '';
@@ -186,7 +174,7 @@ for (const row of rows) {
     continue;
   }
 
-  const { payload: desiredPayload, hqExtra } = buildDesiredPayload(row);
+  const { payload: desiredPayload } = buildDesiredPayload(row);
 
   try {
     const existingOrg = await fetchOrganization(this, pdBase, pdToken, orgId);
@@ -205,15 +193,6 @@ for (const row of rows) {
       if (!updateRes.success) {
         throw new Error(updateRes.error || updateRes.error_info || 'Pipedrive update failed');
       }
-
-      const noteContent = buildNoteContent(row, hqExtra);
-      await this.helpers.httpRequest({
-        method: 'POST',
-        url: `${pdBase}/notes`,
-        qs: { api_token: pdToken },
-        body: { content: noteContent, org_id: orgId },
-        json: true,
-      });
     }
 
     const syncedAt = new Date().toISOString();
