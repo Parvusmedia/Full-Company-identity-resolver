@@ -1,5 +1,8 @@
 // n8n Code Node — Push telefonica-seguros_organizaciones → Pipedrive
 // Mode: Run Once for All Items
+//
+// Regla: Pipedrive prevalece. GET org antes de escribir; por cada campo,
+// solo PUT si el valor actual en Pipedrive está vacío y NocoDB trae dato.
 
 const PD_KEYS = {
   commercial_name: 'ad92da1357d2612b282574a28ea8d5f18e09b13a',
@@ -66,19 +69,31 @@ function isPdValueEmpty(value) {
   return false;
 }
 
-/** Keep only fields that are empty in the current Pipedrive organization. */
+function hasNocoValue(value) {
+  return !isPdValueEmpty(value);
+}
+
+/**
+ * Solo campos vacíos en Pipedrive y con valor en NocoDB.
+ * Si Pipedrive ya tiene dato, no se incluye en el PUT (no sobrescribir).
+ */
 function filterPayloadEmptyOnly(existingOrg, desiredPayload) {
   const filtered = {};
-  const skipped = [];
+  const skipped_existing = [];
+  const skipped_no_noco = [];
   for (const [key, newValue] of Object.entries(desiredPayload)) {
+    if (!hasNocoValue(newValue)) {
+      skipped_no_noco.push(key);
+      continue;
+    }
     const current = existingOrg ? existingOrg[key] : undefined;
     if (isPdValueEmpty(current)) {
       filtered[key] = newValue;
     } else {
-      skipped.push(key);
+      skipped_existing.push(key);
     }
   }
-  return { payload: filtered, skipped };
+  return { payload: filtered, skipped_existing, skipped_no_noco };
 }
 
 function buildDesiredPayload(row) {
@@ -104,20 +119,18 @@ function buildDesiredPayload(row) {
     payload[PD_KEYS.followers] = Number(row.followers);
   }
 
-  payload[PD_KEYS.enriched_at] = toPipedriveDate(row.enriched_at);
+  if (String(row.enriched_at || '').trim()) {
+    payload[PD_KEYS.enriched_at] = toPipedriveDate(row.enriched_at);
+  }
 
   const hq = parseHeadquarters(row.headquarters_text);
-  let hqExtra = '';
   if (hq.locality) payload[PD_KEYS.locality] = hq.locality;
   if (hq.province) payload[PD_KEYS.province] = hq.province;
-  if (row.headquarters_text && !hq.locality && !hq.province) {
-    hqExtra = String(row.headquarters_text);
-  }
 
   const phone = String(row.phone || '').trim();
   if (phone) payload.phone = phone;
 
-  return { payload, hqExtra };
+  return { payload };
 }
 
 async function fetchOrganization(context, pdBase, pdToken, orgId) {
@@ -178,9 +191,13 @@ for (const row of rows) {
 
   try {
     const existingOrg = await fetchOrganization(this, pdBase, pdToken, orgId);
-    const { payload, skipped } = filterPayloadEmptyOnly(existingOrg, desiredPayload);
+    const { payload, skipped_existing, skipped_no_noco } = filterPayloadEmptyOnly(
+      existingOrg,
+      desiredPayload,
+    );
     const fieldsWritten = Object.keys(payload).length;
 
+    // Sin campos vacíos que rellenar → no llamar PUT (Pipedrive intacto).
     if (fieldsWritten > 0) {
       const updateRes = await this.helpers.httpRequest({
         method: 'PUT',
@@ -209,7 +226,9 @@ for (const row of rows) {
       org_id: orgId,
       status: fieldsWritten > 0 ? 'synced' : 'synced_no_changes',
       fields_written: fieldsWritten,
-      fields_skipped_existing: skipped,
+      fields_written_keys: Object.keys(payload),
+      fields_skipped_pd_had_value: skipped_existing,
+      fields_skipped_noco_empty: skipped_no_noco,
       update_pipedrive: syncedAt,
     });
     processed += 1;

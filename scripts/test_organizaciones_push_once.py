@@ -9,6 +9,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from pipedrive_empty_only import filter_payload_empty_only
+
 TABLE_ID = "mewh1ynmcokfsfi"
 PD_KEYS = {
     "commercial_name": "ad92da1357d2612b282574a28ea8d5f18e09b13a",
@@ -64,13 +66,22 @@ def main() -> None:
         payload[PD_KEYS["employees"]] = float(row["employee_count"])
     if row.get("followers") is not None:
         payload[PD_KEYS["followers"]] = float(row["followers"])
-    payload[PD_KEYS["enriched_at"]] = str(row.get("enriched_at") or "")[:10] or __import__("datetime").date.today().isoformat()
+    if str(row.get("enriched_at") or "").strip():
+        payload[PD_KEYS["enriched_at"]] = str(row.get("enriched_at") or "")[:10]
+
+    get_url = f"{pd_base}/organizations/{org_id}?" + urllib.parse.urlencode({"api_token": pd_token})
+    existing = http_json(urllib.request.Request(get_url))["data"]
+    merged = filter_payload_empty_only(existing, payload)
+    to_write = merged["payload"]
+    if not to_write:
+        print(json.dumps({"row_id": row["Id"], "pipedrive_update": False, "reason": "all_fields_filled_in_pd", **merged}, indent=2))
+        return
 
     upd_url = f"{pd_base}/organizations/{org_id}?" + urllib.parse.urlencode({"api_token": pd_token})
     upd = http_json(
         urllib.request.Request(
             upd_url,
-            data=json.dumps(payload).encode(),
+            data=json.dumps(to_write).encode(),
             method="PUT",
             headers={"Content-Type": "application/json"},
         )
