@@ -1,12 +1,19 @@
 # NocoDB organizaciones → Pipedrive (Telefónica Seguros)
 
-## Workflow n8n
+## Workflows n8n
 
-- **ID:** `YEiosPHh8GxGSY64`
-- **URL:** https://pmedia.app.n8n.cloud/workflow/YEiosPHh8GxGSY64
-- **Rama nueva:** `Push Organizaciones (Manual)` / `Push Organizaciones (Every 2h)` → `config_enrich_push` → `Push Enriched Organizaciones to Pipedrive` (independiente del cron de supresiones en `config1`)
+### Producción (activo, polling)
 
-La rama histórica (Pipedrive → `suppression_entities`) no se elimina.
+- **Nombre:** `TefSeguros NocoDB OK → Pipedrive Push`
+- Creado/actualizado con `scripts/create_dedicated_enrich_workflow.py`
+- **Cada 5 minutos** busca filas con `pipedrive_status = ok` y las procesa
+- Webhook POST (mismo flujo): `{N8N_URL}/webhook/telefonica-org-pipedrive-push` (requiere workflow **activo**)
+
+**Importante:** marcar `ok` en NocoDB **no** ejecuta n8n por sí solo. Hace falta este workflow activo (poll) o un webhook NocoDB → URL anterior.
+
+### Legacy (inactivo)
+
+- **ID:** `YEiosPHh8GxGSY64` — incluye supresiones + rama manual; dejar **inactivo** para no lanzar el cron de clientes Pipedrive.
 
 ## NocoDB
 
