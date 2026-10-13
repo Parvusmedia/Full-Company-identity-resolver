@@ -70,12 +70,13 @@ function parseHeadquarters(text) {
   return { locality: raw, province: '' };
 }
 
-function toPipedriveDate(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return new Date().toISOString().slice(0, 10);
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
-  return d.toISOString().slice(0, 10);
+function enrichmentWriteDate(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
 }
 
 function orgIdFromRow(row) {
@@ -150,9 +151,7 @@ function buildDesiredPayload(row) {
     payload[PD_KEYS.followers] = Number(row.followers);
   }
 
-  if (String(row.enriched_at || '').trim()) {
-    payload[PD_KEYS.enriched_at] = toPipedriveDate(row.enriched_at);
-  }
+  payload[PD_KEYS.enriched_at] = enrichmentWriteDate();
 
   const hq = parseHeadquarters(row.headquarters_text);
   if (hq.locality) payload[PD_KEYS.locality] = hq.locality;

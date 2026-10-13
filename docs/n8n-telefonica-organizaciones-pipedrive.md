@@ -37,10 +37,12 @@
 | `confidence` | Confianza_enriquecimiento |
 | `employee_count` | Empleados |
 | `followers` | Linkedin_followers |
-| `enriched_at` | Fecha_enriquecimiento |
+| fecha del sync (Europe/Madrid, `AAAA-MM-DD`) | Fecha_enriquecimiento |
 | `headquarters_text` | Localidad / Provincia (parse simple) |
 | `industry` | Sector (`industry`), solo si el texto cae en una opción de Pipedrive |
 | `match_status`, `relationship`, `evidence_summary` | Solo en NocoDB (no se envían a Pipedrive) |
+
+`Fecha_enriquecimiento` no copia `enriched_at` de NocoDB. Es la fecha (zona Europe/Madrid) en la que el sync escribe datos de enriquecimiento. Pipedrive la guarda como fecha `AAAA-MM-DD` y la muestra en el formato de la cuenta, por ejemplo `13/10/2026`. Si el campo ya tiene fecha, no se pisa.
 
 ## Sector
 
