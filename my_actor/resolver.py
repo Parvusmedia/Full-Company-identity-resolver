@@ -119,6 +119,12 @@ def settings_from_input(raw_input: dict[str, Any], *, env_token: str | None, env
         openai_model=raw_input.get("openai_model") or "gpt-4o-mini",
         ai_confidence_threshold=int(raw_input.get("ai_confidence_threshold") or 78),
         batch_size=int(raw_input.get("batch_size") or 20),
+        google_actor_timeout_seconds=float(
+            raw_input.get("google_actor_timeout_seconds") or 600.0
+        ),
+        company_resolve_timeout_seconds=float(
+            raw_input.get("company_resolve_timeout_seconds") or 480.0
+        ),
         debug=bool(raw_input.get("debug", False)),
     )
 
@@ -455,6 +461,7 @@ async def resolve_company(
             language_code=settings.language_code,
             results_per_page=settings.google_results_per_page,
             batch_size=settings.batch_size,
+            actor_timeout_seconds=settings.google_actor_timeout_seconds,
         )
     else:
         evidences = [
@@ -624,6 +631,7 @@ async def resolve_company(
                 language_code=settings.language_code,
                 results_per_page=settings.google_results_per_page,
                 batch_size=settings.batch_size,
+                actor_timeout_seconds=settings.google_actor_timeout_seconds,
             )
             extra_linkedin = filter_linkedin_evidences(fallback_evidences)
             existing_urls = {c.linkedin_url for c in candidates}
@@ -754,15 +762,29 @@ async def resolve_companies_batch(
         language_code=settings.language_code,
         results_per_page=settings.google_results_per_page,
         batch_size=settings.batch_size,
+        actor_timeout_seconds=settings.google_actor_timeout_seconds,
     )
 
     resolve_concurrency = max(1, settings.resolve_concurrency)
     sem = asyncio.Semaphore(resolve_concurrency)
+    company_timeout = settings.company_resolve_timeout_seconds
 
     async def _resolve_one(company: CompanyInput) -> ResolutionResult:
         async with sem:
             try:
-                return await resolve_company(company, settings, prefetched_evidences=all_evidences)
+                coro = resolve_company(company, settings, prefetched_evidences=all_evidences)
+                if company_timeout and company_timeout > 0:
+                    return await asyncio.wait_for(coro, timeout=company_timeout)
+                return await coro
+            except asyncio.TimeoutError:
+                Actor.log.warning(
+                    "Company resolve timed out after %ss: %s",
+                    company_timeout,
+                    company.legal_name,
+                )
+                result = _empty_result(company, error="ResolveTimeout", status=MatchStatus.ERROR)
+                result.google_queries_used = build_initial_queries(company.legal_name)
+                return result
             except Exception as exc:  # noqa: BLE001
                 Actor.log.exception(
                     "Failed resolving company %s: %s",

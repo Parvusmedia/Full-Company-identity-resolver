@@ -269,6 +269,8 @@ async def main_async(args: argparse.Namespace) -> int:
             "batch_size": args.chunk_size,
             "harvest_concurrency": args.harvest_concurrency,
             "resolve_concurrency": args.resolve_concurrency,
+            "google_actor_timeout_seconds": args.apify_timeout,
+            "company_resolve_timeout_seconds": args.company_timeout,
             "debug": False,
         },
         env_token=os.getenv("APIFY_TOKEN"),
@@ -483,18 +485,35 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--table", default=DEFAULT_TABLE)
     parser.add_argument("--view", default=DEFAULT_VIEW)
     parser.add_argument("--confidence-lt", type=float, default=50.0)
-    parser.add_argument("--chunk-size", type=int, default=int(os.getenv("CHUNK_SIZE", "10")))
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=int(os.getenv("CHUNK_SIZE", "10")),
+        help="Google Search Apify batch size (queries per actor run; default 10)",
+    )
     parser.add_argument(
         "--harvest-concurrency",
         type=int,
-        default=int(os.getenv("HARVEST_CONCURRENCY", "3")),
-        help="Max concurrent Harvest API calls (default 3)",
+        default=int(os.getenv("HARVEST_CONCURRENCY", "4")),
+        help="Max concurrent Harvest API calls (default 4)",
     )
     parser.add_argument(
         "--resolve-concurrency",
         type=int,
-        default=int(os.getenv("RESOLVE_CONCURRENCY", "1")),
-        help="Resolve companies in parallel after batched Google (default 1 = sequential)",
+        default=int(os.getenv("RESOLVE_CONCURRENCY", "3")),
+        help="Resolve companies in parallel after batched Google (default 3)",
+    )
+    parser.add_argument(
+        "--apify-timeout",
+        type=float,
+        default=float(os.getenv("APIFY_ACTOR_TIMEOUT", "600")),
+        help="Max seconds per Google Search Actor batch (default 600)",
+    )
+    parser.add_argument(
+        "--company-timeout",
+        type=float,
+        default=float(os.getenv("COMPANY_RESOLVE_TIMEOUT", "480")),
+        help="Max seconds per company resolve incl. fallbacks (default 480)",
     )
     parser.add_argument(
         "--wave-size",

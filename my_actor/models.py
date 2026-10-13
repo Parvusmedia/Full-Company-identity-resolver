@@ -68,6 +68,8 @@ class ActorSettings(BaseModel):
     openai_model: str = "gpt-4o-mini"
     ai_confidence_threshold: int = 78
     batch_size: int = 20
+    google_actor_timeout_seconds: float = 600.0
+    company_resolve_timeout_seconds: float = 480.0
     debug: bool = False
 
 

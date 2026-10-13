@@ -192,6 +192,7 @@ async def run_google_searches(
     language_code: str = "es",
     results_per_page: int = 10,
     batch_size: int = 20,
+    actor_timeout_seconds: float | None = 600.0,
 ) -> list[GoogleEvidence]:
     """Execute Google Search Actor in batches and return parsed evidences."""
     unique_queries = []
@@ -237,7 +238,18 @@ async def run_google_searches(
                 len(batch),
             )
             try:
-                run = await client.actor(actor_id).call(run_input=run_input)
+                call = client.actor(actor_id).call(run_input=run_input)
+                if actor_timeout_seconds and actor_timeout_seconds > 0:
+                    run = await asyncio.wait_for(call, timeout=actor_timeout_seconds)
+                else:
+                    run = await call
+            except asyncio.TimeoutError:
+                Actor.log.warning(
+                    "Google Search Actor timed out after %ss (%s queries in batch).",
+                    actor_timeout_seconds,
+                    len(batch),
+                )
+                continue
             except Exception as exc:  # noqa: BLE001
                 Actor.log.exception("Google Search Actor call failed: %s", type(exc).__name__)
                 continue
