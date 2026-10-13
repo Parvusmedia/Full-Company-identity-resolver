@@ -60,6 +60,10 @@ Ejemplo: `Insurance`, `Insurance Carriers` y `Banking` → `8` Servicios financi
 
 Si no hay correspondencia, **no se envía** `industry` (un texto libre haría fallar el PUT) y el resto de campos sí se sincroniza. La ejecución deja `industry_sync: "unmapped"` en la fila y el recuento en `industry_unmapped`. Un sector que Pipedrive ya tiene no se pisa.
 
+## Directorios
+
+`alimarket.es` y `https://www.linkedin.com/company/publicaciones-alimarket-s.a./` no son la empresa. Si una fila `ok` trae esa web, ese dominio o ese LinkedIn, el sync no escribe en Pipedrive: borra el enrich en NocoDB, deja `confidence` en 15 y `enrichment_status = rejected_directory`.
+
 Para cubrir una etiqueta nueva: añadir el alias normalizado en `industry_legacy_aliases.json` y ejecutar `python3 scripts/build_industry_map.py`.
 
 ## Mantenimiento en repo

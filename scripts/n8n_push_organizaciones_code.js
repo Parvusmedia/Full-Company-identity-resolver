@@ -93,6 +93,15 @@ function shouldYieldToOlderRun(selfId, running, nowMs = Date.now(), staleMs = 8 
   return false;
 }
 
+function isDirectoryIdentityRow(row) {
+  const blob = [row && row.website, row && row.domain, row && row.linkedin_url]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .join(' ');
+  if (!blob) return false;
+  if (blob.includes('publicaciones-alimarket')) return true;
+  return blob.includes('alimarket.es');
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -274,6 +283,34 @@ for (const row of rows) {
   const orgId = orgIdFromRow(row);
   if (!orgId) {
     results.push({ Id: row.Id, status: 'error', reason: 'missing_org_id' });
+    continue;
+  }
+
+  if (isDirectoryIdentityRow(row)) {
+    await this.helpers.httpRequest({
+      method: 'PATCH',
+      url: `${ncBase}/api/v2/tables/${tableId}/records`,
+      headers: ncHeaders,
+      body: [{
+        Id: row.Id,
+        commercial_name: null,
+        linkedin_url: null,
+        website: null,
+        domain: null,
+        industry: null,
+        employee_count: null,
+        followers: null,
+        phone: null,
+        headquarters_text: null,
+        confidence: 15,
+        match_status: 'not_found',
+        relationship: 'requires_review',
+        enrichment_status: 'rejected_directory',
+        evidence_summary: 'Directorio excluido: web o LinkedIn de Publicaciones Alimarket. No se escribe en Pipedrive.',
+      }],
+      json: true,
+    });
+    results.push({ Id: row.Id, status: 'rejected_directory', org_id: orgId });
     continue;
   }
 

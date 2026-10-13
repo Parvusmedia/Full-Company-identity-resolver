@@ -59,6 +59,8 @@ def main() -> None:
     js_code = CODE_PATH.read_text(encoding="utf-8")
     if "function mapIndustry" not in js_code or "shouldYieldToOlderRun" not in js_code:
         raise SystemExit("refusing to publish push code without industry mapping and single-flight")
+    if "function isDirectoryIdentityRow" not in js_code:
+        raise SystemExit("refusing to publish push code without directory rejection")
 
     workflow = api("GET", f"/workflows/{WORKFLOW_ID}")
     node = next(item for item in workflow["nodes"] if item["name"] == NODE_NAME)
