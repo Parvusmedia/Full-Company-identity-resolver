@@ -22,6 +22,14 @@ assert.equal(shouldYieldToOlderRun(null, [{ id: 10, startedAt: recent }], now), 
 assert.equal(shouldYieldToOlderRun(5, [], now), false);
 assert.match(code, /reason: 'another_run_in_progress'/);
 assert.match(code, /enrich_push_max_rows_per_run, 50/);
+assert.match(code, /function pipedriveStatusCode/);
+const statusMatch = code.match(/function pipedriveStatusCode\(error\) \{[\s\S]*?\n\}/);
+assert.ok(statusMatch, "pipedriveStatusCode missing");
+const pipedriveStatusCode = new Function(`${statusMatch[0]}\nreturn pipedriveStatusCode;`)();
+assert.equal(pipedriveStatusCode({ statusCode: 400 }), "400");
+assert.equal(pipedriveStatusCode({ message: "Request failed with status code 404" }), "404");
+assert.equal(pipedriveStatusCode({ message: "socket hang up" }), "error");
+assert.match(code, /pipedrive_status: code/);
 assert.match(code, /function isDirectoryIdentityRow/);
 const start = code.indexOf("function isDirectoryIdentityRow");
 let depth = 0;

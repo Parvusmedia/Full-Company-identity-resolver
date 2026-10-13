@@ -133,6 +133,16 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function pipedriveStatusCode(error) {
+  const direct = Number(
+    (error && (error.statusCode || error.httpCode))
+    || (error && error.response && error.response.status),
+  );
+  if (direct >= 400 && direct <= 599) return String(direct);
+  const match = String((error && error.message) || '').match(/\b([45]\d{2})\b/);
+  return match ? match[1] : 'error';
+}
+
 function orgIdFromRow(row) {
   const a = String(row.pipedrive_org_id || '').trim();
   const b = String(row.source_id || '').trim();
@@ -397,7 +407,33 @@ for (const row of rows) {
     });
     processed += 1;
   } catch (error) {
-    results.push({ Id: row.Id, org_id: orgId, status: 'error', reason: error.message });
+    const code = pipedriveStatusCode(error);
+    const reason = String((error && error.message) || code).slice(0, 500);
+    try {
+      await this.helpers.httpRequest({
+        method: 'PATCH',
+        url: `${ncBase}/api/v2/tables/${tableId}/records`,
+        headers: ncHeaders,
+        body: [{ Id: row.Id, pipedrive_status: code, error: reason }],
+        json: true,
+      });
+    } catch (writeError) {
+      results.push({
+        Id: row.Id,
+        org_id: orgId,
+        status: 'error',
+        pipedrive_status: code,
+        reason: `${reason} | noco_status_not_saved`,
+      });
+      continue;
+    }
+    results.push({
+      Id: row.Id,
+      org_id: orgId,
+      status: 'error',
+      pipedrive_status: code,
+      reason,
+    });
   }
 }
 

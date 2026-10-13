@@ -23,6 +23,7 @@ Marcar 50 filas en `ok` puede disparar 50 webhooks. No hace falta espaciarlos: e
 - Tabla: `telefonica-seguros_organizaciones` (`mewh1ynmcokfsfi`)
 - Filtro: `confidence > 60` y `pipedrive_status = ok`
 - Tras éxito: `update_pipedrive` (ISO) y `pipedrive_status = synced`
+- Si Pipedrive rechaza la organización, `pipedrive_status` pasa a ser el código HTTP (`400`, `404`, …) y `error` guarda el motivo. Esa fila deja de estar en `ok` y no se reintenta sola. Para volver a lanzarla, hay que ponerla otra vez en `ok`.
 - **Pipedrive prevalece:** antes de cada sync se hace `GET` de la organización. **Solo** se escribe un campo si en Pipedrive está **vacío** y en NocoDB hay valor. Si Pipedrive ya tiene dato (aunque sea distinto al de NocoDB), **no se toca** y no hay `PUT` para ese campo. Si no hay ningún campo vacío que rellenar, **no hay actualización en Pipedrive** (solo marca `synced` en NocoDB). **No** se crean notas.
 
 ## ID organización
