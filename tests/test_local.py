@@ -16,12 +16,13 @@ from my_actor.normalization import (
     remove_legal_forms,
     should_reject_linkedin_url,
 )
-from my_actor.resolver import parse_input_companies
+from my_actor.resolver import _result_from_selection, parse_input_companies
 from my_actor.scoring import (
     apply_identity_gates,
     classify_match_status,
     compute_final_score,
     compute_pre_score,
+    is_directory_false_positive,
 )
 from my_actor.models import GoogleEvidence, MatchStatus, ResolutionResult, Relationship, WebsiteCandidate
 
@@ -76,6 +77,14 @@ def test_linkedin_url_rules_and_dedupe() -> None:
     assert should_reject_linkedin_url("https://www.linkedin.com/jobs/view/123")
     assert should_reject_linkedin_url("https://www.linkedin.com/school/ie-university/")
     assert should_reject_linkedin_url("https://www.linkedin.com/posts/foo-activity-1")
+    for url in (
+        "https://www.linkedin.com/company/publicaciones-alimarket-s.a./",
+        "http://linkedin.com/company/publicaciones-alimarket-s.a",
+        "https://es.linkedin.com/company/publicaciones-alimarket-s-a/",
+        "https://www.linkedin.com/company/publicaciones-alimarket/",
+    ):
+        assert should_reject_linkedin_url(url)
+        assert normalize_linkedin_company_url(url) is None
     a = normalize_linkedin_company_url("https://es.linkedin.com/company/albrok-mediacion/about/")
     b = normalize_linkedin_company_url("http://www.linkedin.com/company/albrok-mediacion")
     assert a == b == "https://www.linkedin.com/company/albrok-mediacion/"
@@ -137,7 +146,7 @@ def test_duplicate_urls_single_candidate_scoring() -> None:
 
 
 def test_identity_gate_blocks_alimarket_style_match() -> None:
-    """Directory + wrong LinkedIn must not stay confirmed (Telefónica Apricot/Alimarket)."""
+    """Directory LinkedIn + directory website stay under the sync threshold (>60)."""
     company = CompanyInput(legal_name="Apricot Restauraciones Slu")
     url = "https://www.linkedin.com/company/publicaciones-alimarket-s.a./"
     cand = LinkedInCandidate(
@@ -154,6 +163,7 @@ def test_identity_gate_blocks_alimarket_style_match() -> None:
             "active": True,
         },
     )
+    assert is_directory_false_positive(company, cand)
     websites = [
         WebsiteCandidate(
             url="https://www.alimarket.es/",
@@ -162,13 +172,47 @@ def test_identity_gate_blocks_alimarket_style_match() -> None:
             score=30.0,
         )
     ]
-    score, _, rel = compute_final_score(company, cand, websites)
+    score, reasons, rel = compute_final_score(company, cand, websites)
     status = classify_match_status(score, None, has_candidates=True)
     score, status, rel, gates = apply_identity_gates(company, cand, score, status, rel)
-    assert status != MatchStatus.CONFIRMED
-    assert score <= 65
+    assert status == MatchStatus.NOT_FOUND
+    assert score == 15
     assert rel == Relationship.REQUIRES_REVIEW
-    assert gates
+    assert "directory_publisher_rejected" in gates
+    assert "penalty_harvest_directory_domain" in reasons or "penalty_non_corporate_domain" in reasons
+
+    publisher = CompanyInput(legal_name="Einforma Servicios S.A.")
+    own_page = LinkedInCandidate(
+        linkedin_url="https://www.linkedin.com/company/einforma/",
+        universal_name_guess="einforma",
+        harvest={"name": "Einforma Servicios", "website": "https://www.einforma.com/"},
+    )
+    assert not is_directory_false_positive(publisher, own_page)
+    unrelated = CompanyInput(legal_name="Taller Norte S.L.")
+    assert is_directory_false_positive(
+        unrelated,
+        LinkedInCandidate(
+            linkedin_url="https://www.linkedin.com/company/einforma/",
+            harvest={"name": "eInforma", "website": "https://www.einforma.com/"},
+        ),
+    )
+    blocked = _result_from_selection(
+        company,
+        cand,
+        all_candidates=[cand],
+        website_candidates=websites,
+        google_queries_used=[],
+        harvest_queries_used=[],
+        status=status,
+        confidence=score,
+        relationship=rel,
+        commercial_name=None,
+        ai_decision=None,
+        debug=False,
+    )
+    assert blocked.website is None
+    assert blocked.domain is None
+    assert blocked.confidence == 15
     print("OK identity gate Alimarket-style false positive")
 
 
