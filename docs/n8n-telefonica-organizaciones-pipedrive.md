@@ -5,6 +5,7 @@
 ### Producción (activo, polling)
 
 - **Nombre:** `TefSeguros NocoDB OK → Pipedrive Push`
+- **ID:** `7A1xSnh6x5QeynjU`
 - Creado/actualizado con `scripts/create_dedicated_enrich_workflow.py`
 - **Cada 5 minutos** busca filas con `pipedrive_status = ok` y las procesa
 - Webhook POST (mismo flujo): `{N8N_URL}/webhook/telefonica-org-pipedrive-push` (requiere workflow **activo**)
@@ -38,9 +39,24 @@
 | `followers` | Linkedin_followers |
 | `enriched_at` | Fecha_enriquecimiento |
 | `headquarters_text` | Localidad / Provincia (parse simple) |
+| `industry` | Sector (`industry`), solo si el texto cae en una opción de Pipedrive |
 | `match_status`, `relationship`, `evidence_summary` | Solo en NocoDB (no se envían a Pipedrive) |
 
-`industry` no se envía: Pipedrive solo acepta valores de su lista de opciones.
+## Sector
+
+Pipedrive no acepta texto libre en Sector. El campo es un enum de 20 opciones y la API guarda el **id** (por ejemplo `8` = Servicios financieros).
+
+En el sync, `mapIndustry` normaliza el valor de NocoDB (minúsculas, sin acentos, `&` → `and`) y lo busca en:
+
+1. La taxonomía LinkedIn v2, subiendo cada industria a su raíz (esas 20 raíces son las opciones de Pipedrive).
+2. Alias de etiquetas LinkedIn v1 que ya no existen en v2 (`scripts/data/industry_legacy_aliases.json`).
+3. Las etiquetas en inglés y en español de las propias opciones de Pipedrive.
+
+Ejemplo: `Insurance`, `Insurance Carriers` y `Banking` → `8` Servicios financieros.
+
+Si no hay correspondencia, **no se envía** `industry` (un texto libre haría fallar el PUT) y el resto de campos sí se sincroniza. La ejecución deja `industry_sync: "unmapped"` en la fila y el recuento en `industry_unmapped`. Un sector que Pipedrive ya tiene no se pisa.
+
+Para cubrir una etiqueta nueva: añadir el alias normalizado en `industry_legacy_aliases.json` y ejecutar `python3 scripts/build_industry_map.py`.
 
 ## Mantenimiento en repo
 

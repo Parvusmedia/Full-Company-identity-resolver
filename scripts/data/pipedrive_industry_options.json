@@ -1,0 +1,22 @@
+[
+  {"id": 1, "label_en": "Accommodation Services", "label_es": "Servicios de alojamiento"},
+  {"id": 2, "label_en": "Administrative and Support Services", "label_es": "Servicios de administración y soporte"},
+  {"id": 3, "label_en": "Construction", "label_es": "Construcción"},
+  {"id": 4, "label_en": "Consumer Services", "label_es": "Servicios para el consumidor"},
+  {"id": 5, "label_en": "Education", "label_es": "Educación"},
+  {"id": 6, "label_en": "Entertainment Providers", "label_es": "Proveedores de ocio"},
+  {"id": 7, "label_en": "Farming, Ranching, Forestry", "label_es": "Agricultura, ganadería y silvicultura"},
+  {"id": 8, "label_en": "Financial Services", "label_es": "Servicios financieros"},
+  {"id": 9, "label_en": "Government Administration", "label_es": "Administración pública"},
+  {"id": 10, "label_en": "Holding Companies", "label_es": "Empresas de holding"},
+  {"id": 11, "label_en": "Hospitals and Health Care", "label_es": "Hospitales y cuidados sanitarios"},
+  {"id": 12, "label_en": "Manufacturing", "label_es": "Manufactura"},
+  {"id": 13, "label_en": "Oil, Gas, and Mining", "label_es": "Petróleo, gas y minería"},
+  {"id": 14, "label_en": "Professional Services", "label_es": "Servicios profesionales"},
+  {"id": 15, "label_en": "Real Estate and Equipment Rental Services", "label_es": "Servicios inmobiliarios y de alquiler de equipos"},
+  {"id": 16, "label_en": "Retail", "label_es": "Venta minorista"},
+  {"id": 17, "label_en": "Technology, Information and Media", "label_es": "Tecnología, información y medios de comunicación"},
+  {"id": 18, "label_en": "Transportation, Logistics, Supply Chain and Storage", "label_es": "Transporte, logística, cadena de suministro y almacenamiento"},
+  {"id": 19, "label_en": "Utilities", "label_es": "Servicios públicos"},
+  {"id": 20, "label_en": "Wholesale", "label_es": "Venta al por mayor"}
+]
