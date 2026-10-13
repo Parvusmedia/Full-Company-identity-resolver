@@ -20,6 +20,7 @@
 - Tabla: `telefonica-seguros_organizaciones` (`mewh1ynmcokfsfi`)
 - Filtro: `confidence > 60` y `pipedrive_status = ok`
 - Tras éxito: `update_pipedrive` (ISO) y `pipedrive_status = synced`
+- **Solo rellena campos vacíos en Pipedrive** (si el campo ya tiene valor, no se sobrescribe). La nota de enriquecimiento solo se crea si hubo al menos un campo escrito.
 
 ## ID organización
 

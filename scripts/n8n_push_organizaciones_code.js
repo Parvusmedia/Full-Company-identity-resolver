@@ -71,7 +71,29 @@ function buildNoteContent(row, hqExtra) {
   return lines.join('\n');
 }
 
-function buildUpdatePayload(row) {
+function isPdValueEmpty(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (typeof value === 'number' && Number.isNaN(value)) return true;
+  return false;
+}
+
+/** Keep only fields that are empty in the current Pipedrive organization. */
+function filterPayloadEmptyOnly(existingOrg, desiredPayload) {
+  const filtered = {};
+  const skipped = [];
+  for (const [key, newValue] of Object.entries(desiredPayload)) {
+    const current = existingOrg ? existingOrg[key] : undefined;
+    if (isPdValueEmpty(current)) {
+      filtered[key] = newValue;
+    } else {
+      skipped.push(key);
+    }
+  }
+  return { payload: filtered, skipped };
+}
+
+function buildDesiredPayload(row) {
   const payload = {};
   const linkedin = String(row.linkedin_url || '').trim();
   if (linkedin) payload.linkedin = linkedin;
@@ -108,6 +130,19 @@ function buildUpdatePayload(row) {
   if (phone) payload.phone = phone;
 
   return { payload, hqExtra };
+}
+
+async function fetchOrganization(context, pdBase, pdToken, orgId) {
+  const res = await context.helpers.httpRequest({
+    method: 'GET',
+    url: `${pdBase}/organizations/${orgId}`,
+    qs: { api_token: pdToken },
+    json: true,
+  });
+  if (!res.success || !res.data) {
+    throw new Error(res.error || res.error_info || 'Pipedrive get organization failed');
+  }
+  return res.data;
 }
 
 const cfg = $('config_enrich_push').first().json;
@@ -151,29 +186,35 @@ for (const row of rows) {
     continue;
   }
 
-  const { payload, hqExtra } = buildUpdatePayload(row);
+  const { payload: desiredPayload, hqExtra } = buildDesiredPayload(row);
 
   try {
-    const updateRes = await this.helpers.httpRequest({
-      method: 'PUT',
-      url: `${pdBase}/organizations/${orgId}`,
-      qs: { api_token: pdToken },
-      body: payload,
-      json: true,
-    });
+    const existingOrg = await fetchOrganization(this, pdBase, pdToken, orgId);
+    const { payload, skipped } = filterPayloadEmptyOnly(existingOrg, desiredPayload);
+    const fieldsWritten = Object.keys(payload).length;
 
-    if (!updateRes.success) {
-      throw new Error(updateRes.error || updateRes.error_info || 'Pipedrive update failed');
+    if (fieldsWritten > 0) {
+      const updateRes = await this.helpers.httpRequest({
+        method: 'PUT',
+        url: `${pdBase}/organizations/${orgId}`,
+        qs: { api_token: pdToken },
+        body: payload,
+        json: true,
+      });
+
+      if (!updateRes.success) {
+        throw new Error(updateRes.error || updateRes.error_info || 'Pipedrive update failed');
+      }
+
+      const noteContent = buildNoteContent(row, hqExtra);
+      await this.helpers.httpRequest({
+        method: 'POST',
+        url: `${pdBase}/notes`,
+        qs: { api_token: pdToken },
+        body: { content: noteContent, org_id: orgId },
+        json: true,
+      });
     }
-
-    const noteContent = buildNoteContent(row, hqExtra);
-    await this.helpers.httpRequest({
-      method: 'POST',
-      url: `${pdBase}/notes`,
-      qs: { api_token: pdToken },
-      body: { content: noteContent, org_id: orgId },
-      json: true,
-    });
 
     const syncedAt = new Date().toISOString();
     await this.helpers.httpRequest({
@@ -184,7 +225,14 @@ for (const row of rows) {
       json: true,
     });
 
-    results.push({ Id: row.Id, org_id: orgId, status: 'synced', update_pipedrive: syncedAt });
+    results.push({
+      Id: row.Id,
+      org_id: orgId,
+      status: fieldsWritten > 0 ? 'synced' : 'synced_no_changes',
+      fields_written: fieldsWritten,
+      fields_skipped_existing: skipped,
+      update_pipedrive: syncedAt,
+    });
     processed += 1;
   } catch (error) {
     results.push({ Id: row.Id, org_id: orgId, status: 'error', reason: error.message });
