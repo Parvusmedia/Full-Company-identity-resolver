@@ -16,6 +16,7 @@ from .google_search import (
     extract_domains_from_text,
     filter_linkedin_evidences,
     filter_website_evidences,
+    is_blocked_website,
     is_non_corporate_website_domain,
     run_google_searches,
 )
@@ -235,7 +236,9 @@ def _result_from_selection(
 ) -> ResolutionResult:
     google_website = website_candidates[0].url if website_candidates else None
     google_domain = website_candidates[0].domain if website_candidates else None
-    if is_non_corporate_website_domain(google_domain, company.legal_name):
+    if is_blocked_website(google_website, company.legal_name) or is_non_corporate_website_domain(
+        google_domain, company.legal_name
+    ):
         google_website = None
         google_domain = None
 
@@ -269,7 +272,8 @@ def _result_from_selection(
     emp_range, emp_start, emp_end = harvest_employee_range(element if element else None)
     raw_harvest_website = element.get("website") if element else None
     raw_harvest_domain = extract_registrable_domain(str(raw_harvest_website) if raw_harvest_website else None)
-    if is_directory_false_positive(company, selected):
+    harvest_site_blocked = is_blocked_website(str(raw_harvest_website) if raw_harvest_website else None, company.legal_name)
+    if is_directory_false_positive(company, selected) or harvest_site_blocked:
         website = google_website
         domain = google_domain
     else:

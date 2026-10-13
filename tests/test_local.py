@@ -17,6 +17,7 @@ from my_actor.normalization import (
     should_reject_linkedin_url,
 )
 from my_actor.resolver import _result_from_selection, parse_input_companies
+from my_actor.google_search import is_blocked_website
 from my_actor.scoring import (
     apply_identity_gates,
     classify_match_status,
@@ -82,9 +83,16 @@ def test_linkedin_url_rules_and_dedupe() -> None:
         "http://linkedin.com/company/publicaciones-alimarket-s.a",
         "https://es.linkedin.com/company/publicaciones-alimarket-s-a/",
         "https://www.linkedin.com/company/publicaciones-alimarket/",
+        "https://www.linkedin.com/company/construnews-com/",
+        "https://www.linkedin.com/company/idaeenergia/",
+        "https://www.linkedin.com/company/Farmacias.com/",
     ):
         assert should_reject_linkedin_url(url)
         assert normalize_linkedin_company_url(url) is None
+    assert is_blocked_website("https://www.iberinform.es/empresa/208128/eco-mora")
+    assert is_blocked_website("https://infonif.economia3.com/ficha-empresa/goodfast")
+    assert is_blocked_website("https://www.informa.es/directorio-empresas/Empresa_ENTEX-TEXTIL.html")
+    assert not is_blocked_website("https://www.laberit.com/", "Laberit Canarias Sl")
     a = normalize_linkedin_company_url("https://es.linkedin.com/company/albrok-mediacion/about/")
     b = normalize_linkedin_company_url("http://www.linkedin.com/company/albrok-mediacion")
     assert a == b == "https://www.linkedin.com/company/albrok-mediacion/"

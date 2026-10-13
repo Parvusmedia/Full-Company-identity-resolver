@@ -175,15 +175,45 @@ def _directory_slug_key(slug: str) -> str:
     return key.strip("-")
 
 
-def is_blocked_directory_linkedin_slug(slug: str | None) -> bool:
-    """True for LinkedIn pages of trade directories, not the target company.
+# Publisher pages that Google ranks for unrelated companies. Keys are
+# `_directory_slug_key` forms (dots removed, underscores turned into hyphens).
+_BLOCKED_DIRECTORY_LINKEDIN_SLUGS = {
+    "publicaciones-alimarket",
+    "construnews-com",
+    "leadingcourses",
+    "farmaciascom",
+    "radio-de-gmbh",
+    "smartgridsinfo",
+    "idaeenergia",
+    "cadenadesuministro",
+    "canarias7",
+    "congreso-de-los-diputados",
+    "doctoralia-espana",
+    "event-planner-spain-2",
+    "facua",
+    "gastroteca",
+    "infobae",
+    "la-voz-de-galicia",
+    "the-museum-of-modern-art",
+    "nobroker-in",
+    "tendata",
+    "vlex-es",
+    "curso-de-instalador",
+    "covermanager",
+}
 
-    Publicaciones Alimarket publishes alimarket.es. Google often ranks that
-    company page for unrelated razones sociales in the food sector.
+
+def is_blocked_directory_linkedin_slug(slug: str | None) -> bool:
+    """True for LinkedIn pages of directories, trade press, or institutions.
+
+    These pages get ranked for unrelated razones sociales. The slug is the
+    publisher, not the company being resolved.
     """
     if not slug:
         return False
     key = _directory_slug_key(slug)
+    if key in _BLOCKED_DIRECTORY_LINKEDIN_SLUGS:
+        return True
     return key == "publicaciones-alimarket" or key.startswith("publicaciones-alimarket-")
 
 

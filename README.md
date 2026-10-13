@@ -15,7 +15,8 @@ relationship and confidence with explainable evidence.
 4. Keep query, type, position, title, snippet and URL for every result
 5. Keep only `linkedin.com/company/*`, normalize and deduplicate
 6. Reject personal profiles, jobs, school, showcase, posts, pulse, and directory
-   publisher pages (Publicaciones Alimarket / `alimarket.es`)
+   or press publisher pages (Alimarket, Construnews, Iberinform, IDAE, and the
+   same class of listing sites)
 7. Cheap pre-score → enrich top 1–3 candidates with HarvestAPI
 8. Final score combining Google + Harvest. A Harvest website on a known
    directory domain is not stored as the company website.
