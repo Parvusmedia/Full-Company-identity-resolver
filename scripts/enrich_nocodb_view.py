@@ -125,15 +125,24 @@ class NocoClient:
     def _url(self, path: str) -> str:
         return f"{self.base}{path}"
 
-    async def list_records(self, client: httpx.AsyncClient) -> list[dict[str, Any]]:
+    async def list_records(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        view_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         offset = 0
         limit = 100
         while True:
+            params: dict[str, Any] = {"offset": offset, "limit": limit}
+            vid = self.view if view_id is None else view_id
+            if vid:
+                params["viewId"] = vid
             response = await client.get(
                 self._url(f"/api/v2/tables/{self.table}/records"),
                 headers=self._headers,
-                params={"viewId": self.view, "offset": offset, "limit": limit},
+                params=params,
                 timeout=60.0,
             )
             response.raise_for_status()
@@ -304,6 +313,28 @@ async def main_async(args: argparse.Namespace) -> int:
                 if not (conf is None or conf < args.confidence_lt):
                     continue
             targets.append(row)
+
+        if args.only_pending and not targets:
+            pending_in_view = 0
+            for row in records:
+                status = row.get(enrich_key) if enrich_key else row.get("enrichment_status")
+                if status == "pending":
+                    pending_in_view += 1
+            if pending_in_view == 0:
+                print(
+                    f"View {args.view} lists 0 pending rows; loading full table for pending …",
+                    flush=True,
+                )
+                records = await noco.list_records(http, view_id="")
+                targets = []
+                for row in records:
+                    source = str(row.get(source_key)) if source_key and row.get(source_key) is not None else ""
+                    if source in SKIP_SOURCE_IDS:
+                        continue
+                    status = row.get(enrich_key) if enrich_key else row.get("enrichment_status")
+                    if status != "pending":
+                        continue
+                    targets.append(row)
 
         state_path = Path(args.state_file)
         prior = load_run_state(state_path) if args.resume else {}
