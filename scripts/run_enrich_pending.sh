@@ -53,9 +53,27 @@ if [[ "${ENRICH_WATCHDOG:-1}" == "0" ]]; then
   exit $?
 fi
 
+stop_child() {
+  local pid=$1
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+  kill "$pid" 2>/dev/null || true
+  local waited=0
+  while kill -0 "$pid" 2>/dev/null && [[ "$waited" -lt 30 ]]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+  wait "$pid" 2>/dev/null || true
+}
+
 while true; do
   echo "=== enrich pending $(date -u +%Y-%m-%dT%H:%M:%SZ) stall_limit=${STALL_SEC}s ===" >&2
-  run_once &
+  # Background python directly so $! is the enrich PID (not a shell wrapper).
+  run_once "$@" &
   child=$!
   stall_killed=0
   while kill -0 "$child" 2>/dev/null; do
@@ -63,8 +81,7 @@ while true; do
     age="$(checkpoint_age_seconds || echo -1)"
     if [[ "$age" -ge 0 && "$age" -gt "$STALL_SEC" ]]; then
       echo "Checkpoint stale ${age}s (limit ${STALL_SEC}s); restarting enrich child." >&2
-      kill "$child" 2>/dev/null || true
-      wait "$child" 2>/dev/null || true
+      stop_child "$child"
       stall_killed=1
       break
     fi
@@ -72,6 +89,5 @@ while true; do
   if [[ "$stall_killed" -eq 0 ]]; then
     wait "$child" || true
   fi
-  # Brief pause before resume (same state file preserves processed_ids).
   sleep 5
 done
