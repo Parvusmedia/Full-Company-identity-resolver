@@ -803,5 +803,32 @@ async def resolve_companies_batch(
             len(companies),
             resolve_concurrency,
         )
-        results = list(await asyncio.gather(*[_resolve_one(c) for c in companies]))
+        tasks = [asyncio.create_task(_resolve_one(c)) for c in companies]
+        batches = (len(companies) + resolve_concurrency - 1) // resolve_concurrency
+        per_company = company_timeout if company_timeout and company_timeout > 0 else 480.0
+        wave_deadline = per_company * batches + 120.0
+        done, pending = await asyncio.wait(tasks, timeout=wave_deadline)
+        if pending:
+            Actor.log.warning(
+                "Batch resolve deadline (%.0fs): cancelling %s task(s) still running.",
+                wave_deadline,
+                len(pending),
+            )
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.wait(pending, timeout=45.0)
+        results: list[ResolutionResult] = []
+        for company, task in zip(companies, tasks, strict=True):
+            if task in done and not task.cancelled():
+                try:
+                    results.append(task.result())
+                except Exception as exc:  # noqa: BLE001
+                    result = _empty_result(company, error=type(exc).__name__, status=MatchStatus.ERROR)
+                    result.google_queries_used = build_initial_queries(company.legal_name)
+                    results.append(result)
+            else:
+                result = _empty_result(company, error="WaveDeadline", status=MatchStatus.ERROR)
+                result.google_queries_used = build_initial_queries(company.legal_name)
+                results.append(result)
     return results
