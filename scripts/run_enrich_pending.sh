@@ -10,21 +10,24 @@ STATE_FILE="${ENRICH_STATE_FILE:-/tmp/enrich-nocodb-pending-only.state.json}"
 CHECKPOINT_FILE="${ENRICH_CHECKPOINT_FILE:-/tmp/enrich-nocodb-pending-checkpoint.json}"
 STALL_SEC="${ENRICH_STALL_SEC:-5400}"
 
+ENRICH_CMD=(
+  python3 -u scripts/enrich_nocodb_view.py
+  --table mewh1ynmcokfsfi
+  --view vw0q1gm39dsc3d9t
+  --only-pending
+  --wave-size "${WAVE_SIZE:-10}"
+  --chunk-size "${CHUNK_SIZE:-10}"
+  --resolve-concurrency "${RESOLVE_CONCURRENCY:-2}"
+  --harvest-concurrency "${HARVEST_CONCURRENCY:-2}"
+  --apify-timeout "${APIFY_ACTOR_TIMEOUT:-300}"
+  --company-timeout "${COMPANY_RESOLVE_TIMEOUT:-300}"
+  --resume
+  --state-file "$STATE_FILE"
+  --checkpoint-file "$CHECKPOINT_FILE"
+)
+
 run_once() {
-  python3 -u scripts/enrich_nocodb_view.py \
-    --table mewh1ynmcokfsfi \
-    --view vw0q1gm39dsc3d9t \
-    --only-pending \
-    --wave-size "${WAVE_SIZE:-10}" \
-    --chunk-size "${CHUNK_SIZE:-10}" \
-    --resolve-concurrency "${RESOLVE_CONCURRENCY:-2}" \
-    --harvest-concurrency "${HARVEST_CONCURRENCY:-2}" \
-    --apify-timeout "${APIFY_ACTOR_TIMEOUT:-300}" \
-    --company-timeout "${COMPANY_RESOLVE_TIMEOUT:-300}" \
-    --resume \
-    --state-file "$STATE_FILE" \
-    --checkpoint-file "$CHECKPOINT_FILE" \
-    "$@"
+  "${ENRICH_CMD[@]}" "$@"
 }
 
 checkpoint_age_seconds() {
@@ -72,8 +75,7 @@ stop_child() {
 
 while true; do
   echo "=== enrich pending $(date -u +%Y-%m-%dT%H:%M:%SZ) stall_limit=${STALL_SEC}s ===" >&2
-  # Background python directly so $! is the enrich PID (not a shell wrapper).
-  run_once "$@" &
+  "${ENRICH_CMD[@]}" "$@" &
   child=$!
   stall_killed=0
   while kill -0 "$child" 2>/dev/null; do
