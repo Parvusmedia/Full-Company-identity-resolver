@@ -30,24 +30,18 @@ run_once() {
   "${ENRICH_CMD[@]}" "$@"
 }
 
-checkpoint_age_seconds() {
+checkpoint_updated_at() {
   python3 - "$CHECKPOINT_FILE" <<'PY'
 import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 path = Path(sys.argv[1])
 if not path.is_file():
-    print(-1)
+    print("")
     raise SystemExit(0)
 data = json.loads(path.read_text(encoding="utf-8"))
-raw = data.get("updated_at") or data.get("finished_at")
-if not raw:
-    print(-1)
-    raise SystemExit(0)
-dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-print(int((datetime.now(timezone.utc) - dt).total_seconds()))
+print(data.get("updated_at") or data.get("finished_at") or "")
 PY
 }
 
@@ -78,11 +72,19 @@ while true; do
   "${ENRICH_CMD[@]}" "$@" &
   child=$!
   stall_killed=0
+  last_ckpt="$(checkpoint_updated_at)"
+  progress_at=$(date +%s)
   while kill -0 "$child" 2>/dev/null; do
     sleep 120
-    age="$(checkpoint_age_seconds || echo -1)"
-    if [[ "$age" -ge 0 && "$age" -gt "$STALL_SEC" ]]; then
-      echo "Checkpoint stale ${age}s (limit ${STALL_SEC}s); restarting enrich child." >&2
+    current_ckpt="$(checkpoint_updated_at)"
+    now=$(date +%s)
+    if [[ -n "$current_ckpt" && "$current_ckpt" != "$last_ckpt" ]]; then
+      last_ckpt="$current_ckpt"
+      progress_at=$now
+    fi
+    idle=$((now - progress_at))
+    if [[ "$idle" -gt "$STALL_SEC" ]]; then
+      echo "No checkpoint progress for ${idle}s (limit ${STALL_SEC}s); restarting enrich child." >&2
       stop_child "$child"
       stall_killed=1
       break
